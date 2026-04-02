@@ -13,7 +13,7 @@ export function initTelemetry(config: Config): void {
       : undefined;
 
   sdk = new NodeSDK({
-    serviceName: 'taskcli',
+    serviceName: 'task',
     spanProcessors: spanProcessor ? [spanProcessor] : [],
   });
 

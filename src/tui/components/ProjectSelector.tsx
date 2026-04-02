@@ -63,7 +63,7 @@ export function ProjectSelector({ projects, activeProject, onSelect, onCancel }:
       {projects.length === 0 ? (
         <Box paddingX={1} paddingY={1}>
           <Text color={theme.fg}>
-            No projects. Create via: taskcli project create -n &quot;name&quot;
+            No projects. Create via: task project create -n &quot;name&quot;
           </Text>
         </Box>
       ) : (

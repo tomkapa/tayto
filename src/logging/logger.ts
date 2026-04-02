@@ -1,6 +1,6 @@
 import { trace, type Span, SpanStatusCode } from '@opentelemetry/api';
 
-const tracer = trace.getTracer('taskcli');
+const tracer = trace.getTracer('task');
 
 export interface LogAttributes {
   [key: string]: string | number | boolean;

@@ -8,7 +8,7 @@ function getEditor(): string {
 }
 
 export function openInEditor(content: string, filename: string): string | null {
-  const dir = mkdtempSync(join(tmpdir(), 'taskcli-'));
+  const dir = mkdtempSync(join(tmpdir(), 'task-'));
   const filepath = join(dir, filename);
 
   writeFileSync(filepath, content, 'utf-8');

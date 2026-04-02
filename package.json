@@ -1,10 +1,10 @@
 {
-  "name": "taskcli",
+  "name": "task",
   "version": "0.1.0",
   "description": "CLI tool for task management - for solo devs and AI agents",
   "type": "module",
   "bin": {
-    "taskcli": "./dist/index.js"
+    "task": "./dist/index.js"
   },
   "scripts": {
     "build": "tsup",

@@ -1,4 +1,4 @@
-# taskcli
+# task
 
 Task management for solo developers and AI agents. Two interfaces, one database.
 
@@ -16,14 +16,14 @@ SQLite-backed. No server. No login. Just projects and tasks.
 npm install && npm run build
 
 # Create a project
-taskcli project create -n "my-app" --default
+task project create -n "my-app" --default
 
 # Create tasks
-taskcli task create -n "Fix auth bug" -t bug --priority 1
-taskcli task create -n "Add dashboard" -t story --priority 2
+task task create -n "Fix auth bug" -t bug --priority 1
+task task create -n "Add dashboard" -t story --priority 2
 
 # Launch the terminal UI
-taskcli
+task
 ```
 
 ## Installation
@@ -31,22 +31,22 @@ taskcli
 **Requirements:** Node.js >= 18
 
 ```bash
-git clone <repo-url> && cd taskcli
+git clone <repo-url> && cd task
 npm install
 npm run build
-npm link        # makes `taskcli` available globally
+npm link        # makes `task` available globally
 ```
 
 ## Usage
 
 ### Terminal UI
 
-Run `taskcli` with no arguments to launch the interactive TUI.
+Run `task` with no arguments to launch the interactive TUI.
 
 ```bash
-taskcli                          # launch TUI (default)
-taskcli tui                      # explicit launch
-taskcli tui -p "my-app"          # start with a specific project
+task                          # launch TUI (default)
+task tui                      # explicit launch
+task tui -p "my-app"          # start with a specific project
 ```
 
 #### Keyboard Shortcuts
@@ -86,17 +86,17 @@ All commands output JSON to stdout. Errors go to stderr with exit code 1.
 #### Project
 
 ```bash
-taskcli project create -n "my-app" -d "Description" --default
-taskcli project list
-taskcli project update <id> -n "new-name" --default
-taskcli project delete <id>
+task project create -n "my-app" -d "Description" --default
+task project list
+task project update <id> -n "new-name" --default
+task project delete <id>
 ```
 
 #### Task
 
 ```bash
 # Create
-taskcli task create \
+task task create \
   -n "Fix login bug" \
   -t bug \
   -s todo \
@@ -107,21 +107,21 @@ taskcli task create \
   --additional-requirements "Must work on iOS Safari"
 
 # Read
-taskcli task list
-taskcli task list --status in-progress --type bug --search "login"
-taskcli task list --priority 1 --parent <parent-id>
-taskcli task show <id>
+task task list
+task task list --status in-progress --type bug --search "login"
+task task list --priority 1 --parent <parent-id>
+task task show <id>
 
 # Update
-taskcli task update <id> -s in-progress
-taskcli task update <id> --append-notes "Root cause: token not refreshed"
-taskcli task update <id> --append-requirements "Also fix on Android"
+task task update <id> -s in-progress
+task task update <id> --append-notes "Root cause: token not refreshed"
+task task update <id> --append-requirements "Also fix on Android"
 
 # Delete
-taskcli task delete <id>
+task task delete <id>
 
 # Breakdown (create subtasks from JSON)
-taskcli task breakdown <parent-id> -f subtasks.json
+task task breakdown <parent-id> -f subtasks.json
 ```
 
 **subtasks.json** example:
@@ -169,9 +169,9 @@ Configure via environment variables.
 
 | Variable | Default | Description |
 |---|---|---|
-| `TASKCLI_DB_PATH` | `~/.taskcli/data.db` | Path to SQLite database |
-| `TASKCLI_DATA_DIR` | `~/.taskcli` | Data directory |
-| `TASKCLI_LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
+| `TASK_DB_PATH` | `~/.task/data.db` | Path to SQLite database |
+| `TASK_DATA_DIR` | `~/.task` | Data directory |
+| `TASK_LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | &mdash; | OpenTelemetry collector endpoint |
 
 The database and data directory are created automatically on first run.

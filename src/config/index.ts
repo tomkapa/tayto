@@ -13,12 +13,12 @@ function ensureDir(dir: string): void {
 }
 
 export function loadConfig(): Config {
-  const dataDir = process.env['TASKCLI_DATA_DIR'] ?? join(homedir(), '.taskcli');
+  const dataDir = process.env['TASK_DATA_DIR'] ?? join(homedir(), '.task');
   ensureDir(dataDir);
 
   return {
-    dbPath: process.env['TASKCLI_DB_PATH'] ?? join(dataDir, 'data.db'),
-    logLevel: process.env['TASKCLI_LOG_LEVEL'] ?? 'info',
+    dbPath: process.env['TASK_DB_PATH'] ?? join(dataDir, 'data.db'),
+    logLevel: process.env['TASK_LOG_LEVEL'] ?? 'info',
     otelEndpoint: process.env['OTEL_EXPORTER_OTLP_ENDPOINT'],
   };
 }

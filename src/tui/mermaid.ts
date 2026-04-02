@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { exec } from 'node:child_process';
 
 export function openMermaidInBrowser(code: string): void {
-  const dir = mkdtempSync(join(tmpdir(), 'taskcli-mermaid-'));
+  const dir = mkdtempSync(join(tmpdir(), 'task-mermaid-'));
   const filepath = join(dir, 'diagram.html');
 
   const html = `<!DOCTYPE html>

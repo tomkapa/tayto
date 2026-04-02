@@ -14,7 +14,7 @@ import { registerTaskBreakdown } from './commands/task/breakdown.js';
 export function buildCLI(container: Container): Command {
   const program = new Command();
   program
-    .name('taskcli')
+    .name('task')
     .description('CLI task management for solo devs and AI agents')
     .version('0.1.0');
 
