@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import { logger } from '../logging/logger.js';
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), 'migrations');
@@ -17,7 +17,7 @@ function loadMigrations(): Array<{ name: string; sql: string }> {
   }));
 }
 
-export function runMigrations(db: Database.Database): void {
+export function runMigrations(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
       name       TEXT PRIMARY KEY,
@@ -38,15 +38,18 @@ export function runMigrations(db: Database.Database): void {
 
     logger.info(`Applying migration: ${migration.name}`);
 
-    const migrate = db.transaction(() => {
+    db.exec('BEGIN');
+    try {
       db.exec(migration.sql);
       db.prepare('INSERT INTO _migrations (name, applied_at) VALUES (?, ?)').run(
         migration.name,
         new Date().toISOString(),
       );
-    });
-
-    migrate();
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
     logger.info(`Migration applied: ${migration.name}`);
   }
 }

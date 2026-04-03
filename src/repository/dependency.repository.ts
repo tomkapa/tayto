@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import type { Result } from '../types/common.js';
 import { ok, err } from '../types/common.js';
 import type { TaskDependency } from '../types/dependency.js';
@@ -44,7 +44,7 @@ export interface DependencyRepository {
 }
 
 export class SqliteDependencyRepository implements DependencyRepository {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: DatabaseSync) {}
 
   insert(taskId: string, dependsOnId: string, type: DependencyType): Result<TaskDependency> {
     return logger.startSpan('DependencyRepository.insert', () => {

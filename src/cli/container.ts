@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import { SqliteProjectRepository } from '../repository/project.repository.js';
 import { SqliteTaskRepository } from '../repository/task.repository.js';
 import { SqliteDependencyRepository } from '../repository/dependency.repository.js';
@@ -18,7 +18,7 @@ export interface Container {
   portabilityService: PortabilityService;
 }
 
-export function createContainer(db: Database.Database): Container {
+export function createContainer(db: DatabaseSync): Container {
   const projectRepo = new SqliteProjectRepository(db);
   const taskRepo = new SqliteTaskRepository(db);
   const depRepo = new SqliteDependencyRepository(db);

@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import type { Result } from '../types/common.js';
 import { ok, err } from '../types/common.js';
 import type { Project, CreateProjectInput, UpdateProjectInput } from '../types/project.js';
@@ -43,7 +43,7 @@ export interface ProjectRepository {
 }
 
 export class SqliteProjectRepository implements ProjectRepository {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: DatabaseSync) {}
 
   insert(input: CreateProjectInput & { key: string }): Result<Project> {
     return logger.startSpan('ProjectRepository.insert', () => {

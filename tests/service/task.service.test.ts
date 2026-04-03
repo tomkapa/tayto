@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import { createContainer } from '../../src/cli/container.js';
 import { runMigrations } from '../../src/db/migrator.js';
 import type { Container } from '../../src/cli/container.js';
@@ -7,9 +7,9 @@ import type { Container } from '../../src/cli/container.js';
 let container: Container;
 
 beforeEach(() => {
-  const db = new Database(':memory:');
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA foreign_keys = ON');
   runMigrations(db);
   container = createContainer(db);
 });

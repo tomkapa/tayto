@@ -1,6 +1,6 @@
 {
-  "name": "tayto",
-  "version": "0.1.0",
+  "name": "@tomkapa/tayto",
+  "version": "0.1.2",
   "description": "CLI tool for task management - for solo devs and AI agents",
   "type": "module",
   "bin": {
@@ -27,7 +27,6 @@
     "@opentelemetry/exporter-trace-otlp-http": "^0.214.0",
     "@opentelemetry/sdk-node": "^0.214.0",
     "@opentelemetry/sdk-trace-base": "^2.6.1",
-    "better-sqlite3": "^12.8.0",
     "chalk": "^5.6.2",
     "cli-highlight": "^2.1.11",
     "commander": "^14.0.3",
@@ -40,7 +39,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.5.1",
     "@types/react": "^19.2.14",
     "eslint": "^10.1.0",

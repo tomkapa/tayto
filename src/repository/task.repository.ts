@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DatabaseSync } from 'node:sqlite';
 import type { Result } from '../types/common.js';
 import { ok, err } from '../types/common.js';
 import type { Task, CreateTaskInput, UpdateTaskInput, TaskFilter } from '../types/task.js';
@@ -33,7 +33,7 @@ export interface TaskRepository {
 }
 
 export class SqliteTaskRepository implements TaskRepository {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: DatabaseSync) {}
 
   insert(id: string, input: CreateTaskInput & { projectId: string }): Result<Task> {
     return logger.startSpan('TaskRepository.insert', () => {
