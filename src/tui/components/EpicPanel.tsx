@@ -49,42 +49,42 @@ export function EpicPanel({
         {filterActive && <Text color={theme.titleFilter}> *{selectedEpicIds.size}</Text>}
       </Box>
 
-      {epics.length === 0 ? (
-        <Box paddingX={1}>
-          <Text dimColor>No epics</Text>
-        </Box>
-      ) : (
-        visibleEpics.map((epic, i) => {
-          const actualIndex = viewStart + i;
-          const isSelected = actualIndex === selectedIndex && isFocused;
-          const isChecked = selectedEpicIds.has(epic.id);
-          const marker = isChecked ? '[x]' : '[ ]';
-          const statusColor = STATUS_COLOR[epic.status] ?? theme.table.fg;
+      <Box flexDirection="column" flexGrow={1} overflowY="hidden">
+        {epics.length === 0 ? (
+          <Box paddingX={1}>
+            <Text dimColor>No epics</Text>
+          </Box>
+        ) : (
+          visibleEpics.map((epic, i) => {
+            const actualIndex = viewStart + i;
+            const isSelected = actualIndex === selectedIndex && isFocused;
+            const isChecked = selectedEpicIds.has(epic.id);
+            const marker = isChecked ? '[x]' : '[ ]';
+            const statusColor = STATUS_COLOR[epic.status] ?? theme.table.fg;
 
-          if (isSelected) {
-            const cursorBg = isReordering ? theme.flash.warn : theme.table.cursorBg;
+            if (isSelected) {
+              const cursorBg = isReordering ? theme.flash.warn : theme.table.cursorBg;
+              return (
+                <Box key={epic.id}>
+                  <Text backgroundColor={cursorBg} color={theme.table.cursorFg} bold>
+                    {isReordering ? '~ ' : ' '}
+                    {marker} {epic.name}
+                  </Text>
+                </Box>
+              );
+            }
+
             return (
               <Box key={epic.id}>
-                <Text backgroundColor={cursorBg} color={theme.table.cursorFg} bold>
-                  {isReordering ? '~ ' : ' '}
+                <Text color={isChecked ? theme.titleHighlight : statusColor}>
+                  {' '}
                   {marker} {epic.name}
                 </Text>
               </Box>
             );
-          }
-
-          return (
-            <Box key={epic.id}>
-              <Text color={isChecked ? theme.titleHighlight : statusColor}>
-                {' '}
-                {marker} {epic.name}
-              </Text>
-            </Box>
-          );
-        })
-      )}
-
-      <Box flexGrow={1} />
+          })
+        )}
+      </Box>
 
       {epics.length > PAGE_SIZE && (
         <Box justifyContent="flex-end" paddingRight={1}>

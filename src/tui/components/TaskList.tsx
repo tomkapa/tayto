@@ -117,73 +117,73 @@ export function TaskList({
       </Box>
 
       {/* Task rows */}
-      {tasks.length === 0 ? (
-        <Box paddingX={2} paddingY={1}>
-          <Text color={theme.fg}>No tasks found. Press &apos;c&apos; to create one.</Text>
-        </Box>
-      ) : (
-        visibleTasks.map((task, i) => {
-          const actualIndex = viewStart + i;
-          const isSelected = actualIndex === selectedIndex;
-          const isNonTerminalBlocker = nonTerminalBlockerIds.has(task.id);
-          const isNonTerminalDependent = nonTerminalDependentIds.has(task.id);
-          const rowColor = STATUS_COLOR[task.status] ?? theme.table.fg;
-          const rowNum = `${actualIndex + 1}`;
+      <Box flexDirection="column" flexGrow={1} overflowY="hidden">
+        {tasks.length === 0 ? (
+          <Box paddingX={2} paddingY={1}>
+            <Text color={theme.fg}>No tasks found. Press &apos;c&apos; to create one.</Text>
+          </Box>
+        ) : (
+          visibleTasks.map((task, i) => {
+            const actualIndex = viewStart + i;
+            const isSelected = actualIndex === selectedIndex;
+            const isNonTerminalBlocker = nonTerminalBlockerIds.has(task.id);
+            const isNonTerminalDependent = nonTerminalDependentIds.has(task.id);
+            const rowColor = STATUS_COLOR[task.status] ?? theme.table.fg;
+            const rowNum = `${actualIndex + 1}`;
 
-          // Dep marker: ▲ = non-terminal blocker, ▼ = non-terminal dependent
-          const depMarker = isNonTerminalBlocker ? '▲ ' : isNonTerminalDependent ? '▼ ' : '  ';
+            // Dep marker: ▲ = non-terminal blocker, ▼ = non-terminal dependent
+            const depMarker = isNonTerminalBlocker ? '▲ ' : isNonTerminalDependent ? '▼ ' : '  ';
 
-          if (isSelected) {
-            // Blue if able to transition, red if blocked by a non-terminal task
-            const cursorBg = isReordering
-              ? theme.flash.warn
-              : isSelectedBlocked
-                ? theme.table.blockedCursorBg
-                : theme.table.cursorBg;
+            if (isSelected) {
+              // Blue if able to transition, red if blocked by a non-terminal task
+              const cursorBg = isReordering
+                ? theme.flash.warn
+                : isSelectedBlocked
+                  ? theme.table.blockedCursorBg
+                  : theme.table.cursorBg;
+              return (
+                <Box key={task.id}>
+                  <Text backgroundColor={cursorBg} color={theme.table.cursorFg} bold>
+                    {isReordering ? '~ ' : '> '}
+                    {rowNum.padEnd(COL.rank)}
+                    {task.type.padEnd(COL.type)}
+                    {task.status.padEnd(COL.status)}
+                    {task.name}
+                  </Text>
+                </Box>
+              );
+            }
+
+            if (isNonTerminalBlocker || isNonTerminalDependent) {
+              // Lighter blue background for non-terminal related tasks; rank order
+              // implicitly conveys direction (higher rank = blocker, lower = dependent).
+              return (
+                <Box key={task.id}>
+                  <Text backgroundColor={theme.table.depHighlightBg} color={theme.table.fg} bold>
+                    {depMarker}
+                    {rowNum.padEnd(COL.rank)}
+                    {task.type.padEnd(COL.type)}
+                    {task.status.padEnd(COL.status)}
+                    {task.name}
+                  </Text>
+                </Box>
+              );
+            }
+
             return (
               <Box key={task.id}>
-                <Text backgroundColor={cursorBg} color={theme.table.cursorFg} bold>
-                  {isReordering ? '~ ' : '> '}
-                  {rowNum.padEnd(COL.rank)}
-                  {task.type.padEnd(COL.type)}
+                <Text>{'  '}</Text>
+                <Text dimColor>{rowNum.padEnd(COL.rank)}</Text>
+                <Text color={TYPE_COLOR[task.type] ?? rowColor}>{task.type.padEnd(COL.type)}</Text>
+                <Text color={STATUS_COLOR[task.status] ?? rowColor}>
                   {task.status.padEnd(COL.status)}
-                  {task.name}
                 </Text>
+                <Text color={rowColor}>{task.name}</Text>
               </Box>
             );
-          }
-
-          if (isNonTerminalBlocker || isNonTerminalDependent) {
-            // Lighter blue background for non-terminal related tasks; rank order
-            // implicitly conveys direction (higher rank = blocker, lower = dependent).
-            return (
-              <Box key={task.id}>
-                <Text backgroundColor={theme.table.depHighlightBg} color={theme.table.fg} bold>
-                  {depMarker}
-                  {rowNum.padEnd(COL.rank)}
-                  {task.type.padEnd(COL.type)}
-                  {task.status.padEnd(COL.status)}
-                  {task.name}
-                </Text>
-              </Box>
-            );
-          }
-
-          return (
-            <Box key={task.id}>
-              <Text>{'  '}</Text>
-              <Text dimColor>{rowNum.padEnd(COL.rank)}</Text>
-              <Text color={TYPE_COLOR[task.type] ?? rowColor}>{task.type.padEnd(COL.type)}</Text>
-              <Text color={STATUS_COLOR[task.status] ?? rowColor}>
-                {task.status.padEnd(COL.status)}
-              </Text>
-              <Text color={rowColor}>{task.name}</Text>
-            </Box>
-          );
-        })
-      )}
-
-      <Box flexGrow={1} />
+          })
+        )}
+      </Box>
 
       {/* Page indicator */}
       {tasks.length > PAGE_SIZE && (

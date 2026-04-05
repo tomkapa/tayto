@@ -330,12 +330,10 @@ export class TaskServiceImpl implements TaskService {
       if (!projectResult.ok) return projectResult;
       const projectId = projectResult.value.id;
 
-      // Get ranked tasks at the same level (ranking only applies within same level)
-      const rankedResult = this.repo.getRankedTasksByLevel(
-        projectId,
-        taskLevel,
-        TaskStatus.Backlog,
-      );
+      // Get ranked non-terminal tasks at the same level (ranking applies within same level).
+      // Do NOT filter by a single status — anchors (--after/--before) may have any
+      // non-terminal status (backlog, todo, in-progress, review).
+      const rankedResult = this.repo.getRankedNonTerminalTasksByLevel(projectId, taskLevel);
       if (!rankedResult.ok) return rankedResult;
       const ranked = rankedResult.value.filter((t) => t.id !== taskId);
 
@@ -344,7 +342,7 @@ export class TaskServiceImpl implements TaskService {
       if (afterId) {
         const anchor = ranked.find((t) => t.id === afterId);
         if (!anchor) {
-          return err(new AppError('NOT_FOUND', `Anchor task not found in backlog: ${afterId}`));
+          return err(new AppError('NOT_FOUND', `Anchor task not found among active tasks: ${afterId}`));
         }
         const anchorIndex = ranked.indexOf(anchor);
         const next = ranked[anchorIndex + 1];
@@ -352,7 +350,7 @@ export class TaskServiceImpl implements TaskService {
       } else if (beforeId) {
         const anchor = ranked.find((t) => t.id === beforeId);
         if (!anchor) {
-          return err(new AppError('NOT_FOUND', `Anchor task not found in backlog: ${beforeId}`));
+          return err(new AppError('NOT_FOUND', `Anchor task not found among active tasks: ${beforeId}`));
         }
         const anchorIndex = ranked.indexOf(anchor);
         const prev = ranked[anchorIndex - 1];

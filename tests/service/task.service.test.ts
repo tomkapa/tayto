@@ -434,6 +434,51 @@ describe('TaskService', () => {
       });
       expect(result.ok).toBe(true);
     });
+
+    it('allows using a non-backlog task as anchor (--after/--before)', () => {
+      const t1 = container.taskService.createTask({ name: 'Todo task' });
+      const t2 = container.taskService.createTask({ name: 'Backlog task' });
+      if (!t1.ok || !t2.ok) throw new Error('setup failed');
+
+      // Move t1 to 'todo' status
+      const updated = container.taskService.updateTask(t1.value.id, { status: 'todo' });
+      expect(updated.ok).toBe(true);
+
+      // Rerank t2 after t1 (which is now 'todo', not 'backlog')
+      const result = container.taskService.rerankTask({
+        taskId: t2.value.id,
+        afterId: t1.value.id,
+      });
+      expect(result.ok).toBe(true);
+    });
+
+    it('allows using an in-progress task as anchor (--before)', () => {
+      const t1 = container.taskService.createTask({ name: 'In-progress task' });
+      const t2 = container.taskService.createTask({ name: 'Backlog task' });
+      if (!t1.ok || !t2.ok) throw new Error('setup failed');
+
+      container.taskService.updateTask(t1.value.id, { status: 'in-progress' });
+
+      const result = container.taskService.rerankTask({
+        taskId: t2.value.id,
+        beforeId: t1.value.id,
+      });
+      expect(result.ok).toBe(true);
+    });
+
+    it('rejects terminal task as anchor', () => {
+      const t1 = container.taskService.createTask({ name: 'Done task' });
+      const t2 = container.taskService.createTask({ name: 'Backlog task' });
+      if (!t1.ok || !t2.ok) throw new Error('setup failed');
+
+      container.taskService.updateTask(t1.value.id, { status: 'done' });
+
+      const result = container.taskService.rerankTask({
+        taskId: t2.value.id,
+        afterId: t1.value.id,
+      });
+      expect(result.ok).toBe(false);
+    });
   });
 
   describe('epic type and level system', () => {

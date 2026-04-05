@@ -157,3 +157,81 @@ describe('FTS5 Search', () => {
     expect(result.value[0]!.name).toBe('Fix login bug');
   });
 });
+
+describe('Field-specific search (id: prefix)', () => {
+  it('id: prefix filters by task id only via listTasks', () => {
+    const t1 = container.taskService.createTask({ name: 'Fix login bug' });
+    const t2 = container.taskService.createTask({ name: 'Add dashboard' });
+    if (!t1.ok || !t2.ok) throw new Error('setup failed');
+
+    const result = container.taskService.listTasks({ search: `id:${t1.value.id}` });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toHaveLength(1);
+    expect(result.value[0]!.id).toBe(t1.value.id);
+  });
+
+  it('id: prefix supports partial id match', () => {
+    const t1 = container.taskService.createTask({ name: 'Task A' });
+    const t2 = container.taskService.createTask({ name: 'Task B' });
+    if (!t1.ok || !t2.ok) throw new Error('setup failed');
+
+    // Extract the project prefix (e.g. "PROJ" from "PROJ-1")
+    const prefix = t1.value.id.split('-')[0]!;
+    const result = container.taskService.listTasks({ search: `id:${prefix}` });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Both tasks share the same project prefix
+    expect(result.value.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('id: prefix does not match text in other fields', () => {
+    // Create a task whose name contains the other task's ID
+    const t1 = container.taskService.createTask({ name: 'First task' });
+    if (!t1.ok) throw new Error('setup failed');
+
+    container.taskService.createTask({
+      name: `Reference to ${t1.value.id} in name`,
+    });
+
+    const result = container.taskService.listTasks({ search: `id:${t1.value.id}` });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Only the task with matching id, not the one with the id in name
+    expect(result.value).toHaveLength(1);
+    expect(result.value[0]!.id).toBe(t1.value.id);
+  });
+
+  it('id: prefix works with searchTasks (BM25)', () => {
+    const t1 = container.taskService.createTask({ name: 'Task A' });
+    if (!t1.ok) throw new Error('setup failed');
+    container.taskService.createTask({ name: 'Task B' });
+
+    const result = container.taskService.searchTasks(`id:${t1.value.id}`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toHaveLength(1);
+    expect(result.value[0]!.task.id).toBe(t1.value.id);
+  });
+
+  it('plain search matches task name via FTS (all-field search)', () => {
+    container.taskService.createTask({ name: 'Fix login authentication bug' });
+    container.taskService.createTask({ name: 'Add dashboard widget' });
+
+    // Plain text without id: prefix searches all FTS-indexed fields
+    const result = container.taskService.searchTasks('login');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toHaveLength(1);
+    expect(result.value[0]!.task.name).toBe('Fix login authentication bug');
+  });
+
+  it('id: prefix with no matches returns empty', () => {
+    container.taskService.createTask({ name: 'Task A' });
+
+    const result = container.taskService.listTasks({ search: 'id:NONEXISTENT-999' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toHaveLength(0);
+  });
+});

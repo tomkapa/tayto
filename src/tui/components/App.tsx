@@ -1,4 +1,4 @@
-import { useReducer, useEffect, useCallback, useMemo } from 'react';
+import { useReducer, useEffect, useCallback, useMemo, useState } from 'react';
 import { Box, Text, useInput, useApp, useStdout } from 'ink';
 import type { Container } from '../../cli/container.js';
 import {
@@ -50,6 +50,18 @@ export function App({ container, initialProject }: Props) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const [state, dispatch] = useReducer(appReducer, initialState);
+
+  // Force re-render on terminal resize so layout recalculates
+  const [, setResizeTick] = useState(0);
+  useEffect(() => {
+    const onResize = () => {
+      setResizeTick((n) => n + 1);
+    };
+    stdout.on('resize', onResize);
+    return () => {
+      stdout.off('resize', onResize);
+    };
+  }, [stdout]);
 
   // Fixed panel widths so they don't jump when content changes
   const termWidth = stdout.columns > 0 ? stdout.columns : 120;
@@ -961,12 +973,12 @@ export function App({ container, initialProject }: Props) {
   }, [state.activeView, previewTaskId, loadDeps]);
 
   return (
-    <Box flexDirection="column" height="100%">
+    <Box flexDirection="column" height={stdout.rows}>
       {/* Header: app info + key hints + logo */}
       <Header state={state} />
 
       {/* Content area */}
-      <Box flexDirection="column" flexGrow={1}>
+      <Box flexDirection="column" flexGrow={1} overflowY="hidden">
         {state.confirmDelete && <ConfirmDialog task={state.confirmDelete} />}
 
         {!state.confirmDelete && state.activeView === ViewType.TaskList && (

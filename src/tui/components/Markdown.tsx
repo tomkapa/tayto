@@ -74,6 +74,13 @@ function createRenderer(): Marked {
 
 const marked = createRenderer();
 
+/** Render markdown to an ANSI-styled string (for pre-formatted text output). */
+export function renderMarkdown(content: string): string {
+  if (!content.trim()) return '';
+  const rendered = marked.parse(content);
+  return typeof rendered === 'string' ? rendered.trimEnd() : content;
+}
+
 interface Props {
   content: string;
 }

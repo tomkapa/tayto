@@ -7,6 +7,7 @@ import { RANK_GAP, TERMINAL_STATUSES, getTaskLevel, WORK_TYPES } from '../types/
 import { AppError } from '../errors/app-error.js';
 import { logger } from '../logging/logger.js';
 import { NOT_DELETED, type TaskRow, rowToTask } from './shared.js';
+import { parseSearchQuery } from '../utils/search-parser.js';
 
 const TERMINAL_STATUS_ARRAY = [...TERMINAL_STATUSES];
 const TERMINAL_PLACEHOLDERS = TERMINAL_STATUS_ARRAY.map(() => '?').join(', ');
@@ -37,6 +38,8 @@ export interface TaskRepository {
   getMinTerminalRankByLevel(projectId: string, level: TaskLevel): Result<number | null>;
   /** Ranked tasks filtered to the same level. */
   getRankedTasksByLevel(projectId: string, level: TaskLevel, status?: string): Result<Task[]>;
+  /** Ranked non-terminal tasks filtered to the same level. */
+  getRankedNonTerminalTasksByLevel(projectId: string, level: TaskLevel): Result<Task[]>;
   /** FTS5 ranked search across all text fields */
   search(query: string, projectId?: string): Result<SearchResult[]>;
 }
@@ -145,14 +148,19 @@ export class SqliteTaskRepository implements TaskRepository {
         params.push(...filter.parentIds);
       }
       if (filter.search) {
-        // Use FTS5 for tokenized, ranked search with prefix matching
-        const ftsQuery = filter.search
-          .trim()
-          .split(/\s+/)
-          .map((term) => `"${term.replace(/"/g, '""')}"*`)
-          .join(' ');
-        conditions.push(`id IN (SELECT id FROM tasks_fts WHERE tasks_fts MATCH ?)`);
-        params.push(ftsQuery);
+        const parsed = parseSearchQuery(filter.search);
+        if (parsed.kind === 'id') {
+          conditions.push(`id LIKE ?`);
+          params.push(`%${parsed.value}%`);
+        } else {
+          // Use FTS5 for tokenized, ranked search with prefix matching
+          const ftsQuery = parsed.query
+            .split(/\s+/)
+            .map((term) => `"${term.replace(/"/g, '""')}"*`)
+            .join(' ');
+          conditions.push(`id IN (SELECT id FROM tasks_fts WHERE tasks_fts MATCH ?)`);
+          params.push(ftsQuery);
+        }
       }
 
       const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -402,11 +410,36 @@ export class SqliteTaskRepository implements TaskRepository {
     }
   }
 
+  getRankedNonTerminalTasksByLevel(projectId: string, level: TaskLevel): Result<Task[]> {
+    try {
+      const types = this.getTypesForLevel(level);
+      const typePlaceholders = types.map(() => '?').join(', ');
+      const sql = `SELECT * FROM tasks WHERE project_id = ? AND ${NOT_DELETED} AND type IN (${typePlaceholders}) AND status NOT IN (${TERMINAL_PLACEHOLDERS}) ORDER BY rank ASC`;
+      const rows = this.db.prepare(sql).all(projectId, ...types, ...TERMINAL_STATUS_ARRAY) as TaskRow[];
+      return ok(rows.map(rowToTask));
+    } catch (e) {
+      return err(new AppError('DB_ERROR', 'Failed to get ranked non-terminal tasks by level', e));
+    }
+  }
+
   search(query: string, projectId?: string): Result<SearchResult[]> {
     return logger.startSpan('TaskRepository.search', () => {
       try {
-        const ftsQuery = query
-          .trim()
+        const parsed = parseSearchQuery(query);
+
+        if (parsed.kind === 'id') {
+          const conditions = ['t.id LIKE ?', 't.deleted_at IS NULL'];
+          const params: string[] = [`%${parsed.value}%`];
+          if (projectId) {
+            conditions.push('t.project_id = ?');
+            params.push(projectId);
+          }
+          const sql = `SELECT t.*, 0 AS fts_rank FROM tasks t WHERE ${conditions.join(' AND ')} ORDER BY t.rank ASC`;
+          const rows = this.db.prepare(sql).all(...params) as (TaskRow & { fts_rank: number })[];
+          return ok(rows.map((row) => ({ task: rowToTask(row), rank: row.fts_rank })));
+        }
+
+        const ftsQuery = parsed.query
           .split(/\s+/)
           .map((term) => `"${term.replace(/"/g, '""')}"*`)
           .join(' ');
