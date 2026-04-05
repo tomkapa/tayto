@@ -12,7 +12,7 @@ import type { ProjectService } from './project.service.js';
 import type { DependencyService } from './dependency.service.js';
 import { AppError } from '../errors/app-error.js';
 import { logger } from '../logging/logger.js';
-import { TaskStatus, RANK_GAP, isTerminalStatus } from '../types/enums.js';
+import { TaskStatus, TaskLevel, RANK_GAP, isTerminalStatus, getTaskLevel } from '../types/enums.js';
 
 export interface TaskService {
   createTask(input: unknown, projectIdOrName?: string): Result<Task>;
@@ -43,11 +43,22 @@ export class TaskServiceImpl implements TaskService {
       const projectResult = this.projectService.resolveProject(projectRef);
       if (!projectResult.ok) return projectResult;
 
+      const taskLevel = getTaskLevel(parsed.data.type);
+
+      // Epics (level 1) cannot have a parent
+      if (taskLevel === TaskLevel.Epic && parsed.data.parentId) {
+        return err(new AppError('VALIDATION', 'Epic tasks cannot have a parent'));
+      }
+
       if (parsed.data.parentId) {
         const parentResult = this.repo.findById(parsed.data.parentId);
         if (!parentResult.ok) return parentResult;
         if (!parentResult.value) {
           return err(new AppError('NOT_FOUND', `Parent task not found: ${parsed.data.parentId}`));
+        }
+        // Level 2 tasks can only be children of level 1 (epic) tasks
+        if (getTaskLevel(parentResult.value.type) !== TaskLevel.Epic) {
+          return err(new AppError('VALIDATION', 'Tasks can only be children of epic-level tasks'));
         }
       }
 
@@ -119,34 +130,98 @@ export class TaskServiceImpl implements TaskService {
         if (!blockersResult.ok) return blockersResult;
         const hasNonTerminalBlocker = blockersResult.value.some((b) => !isTerminalStatus(b.status));
         if (hasNonTerminalBlocker) {
-          return err(
-            new AppError('VALIDATION', 'Task is blocked by unfinished dependencies'),
-          );
+          return err(new AppError('VALIDATION', 'Task is blocked by unfinished dependencies'));
+        }
+      }
+
+      // Fetch existing task for level/status transition checks
+      const existingResult = this.repo.findById(id);
+      if (!existingResult.ok) return existingResult;
+      if (!existingResult.value) {
+        return err(new AppError('NOT_FOUND', `Task not found: ${id}`));
+      }
+      const existing = existingResult.value;
+
+      // Validate type change against level constraints
+      if (parsed.data.type) {
+        const newLevel = getTaskLevel(parsed.data.type);
+        const oldLevel = getTaskLevel(existing.type);
+
+        if (newLevel !== oldLevel) {
+          // Changing from epic to work: reject if it has children
+          if (oldLevel === TaskLevel.Epic) {
+            const childrenResult = this.repo.findMany({
+              projectId: existing.projectId,
+              parentId: id,
+            });
+            if (childrenResult.ok && childrenResult.value.length > 0) {
+              return err(
+                new AppError(
+                  'VALIDATION',
+                  'Cannot change type from epic: task has children. Remove children first.',
+                ),
+              );
+            }
+          }
+          // Changing to epic: reject if it has a parent
+          if (newLevel === TaskLevel.Epic && existing.parentId) {
+            return err(new AppError('VALIDATION', 'Cannot change type to epic: task has a parent'));
+          }
+        }
+      }
+
+      // Validate parentId change against level constraints
+      if (parsed.data.parentId !== undefined) {
+        const effectiveType = parsed.data.type ?? existing.type;
+        const effectiveLevel = getTaskLevel(effectiveType);
+
+        if (effectiveLevel === TaskLevel.Epic && parsed.data.parentId) {
+          return err(new AppError('VALIDATION', 'Epic tasks cannot have a parent'));
+        }
+        if (parsed.data.parentId) {
+          const parentResult = this.repo.findById(parsed.data.parentId);
+          if (!parentResult.ok) return parentResult;
+          if (!parentResult.value) {
+            return err(new AppError('NOT_FOUND', `Parent task not found: ${parsed.data.parentId}`));
+          }
+          if (getTaskLevel(parentResult.value.type) !== TaskLevel.Epic) {
+            return err(
+              new AppError('VALIDATION', 'Tasks can only be children of epic-level tasks'),
+            );
+          }
         }
       }
 
       // Check if transitioning to terminal status (done/cancelled)
       if (parsed.data.status && isTerminalStatus(parsed.data.status)) {
-        const existingResult = this.repo.findById(id);
-        if (!existingResult.ok) return existingResult;
-        if (!existingResult.value) {
-          return err(new AppError('NOT_FOUND', `Task not found: ${id}`));
-        }
-        const existing = existingResult.value;
+        const effectiveType = parsed.data.type ?? existing.type;
+        const level = getTaskLevel(effectiveType);
 
         const updateResult = this.repo.update(id, parsed.data);
         if (!updateResult.ok) return updateResult;
 
         // Auto-rerank to bottom only when transitioning from active → terminal
         if (!isTerminalStatus(existing.status)) {
-          const maxRankResult = this.repo.getMaxRank(existing.projectId);
+          const maxRankResult = this.repo.getMaxRankByLevel(existing.projectId, level);
           if (!maxRankResult.ok) return maxRankResult;
-          return this.repo.rerank(id, maxRankResult.value + RANK_GAP);
+          const rerankResult = this.repo.rerank(id, maxRankResult.value + RANK_GAP);
+          if (!rerankResult.ok) return rerankResult;
+          this.propagateParentStatus(existing);
+          return rerankResult;
         }
+        this.propagateParentStatus(existing);
         return updateResult;
       }
 
-      return this.repo.update(id, parsed.data);
+      const updateResult = this.repo.update(id, parsed.data);
+      if (!updateResult.ok) return updateResult;
+
+      // Propagate status to parent when transitioning to in-progress
+      if (parsed.data.status && parsed.data.status !== existing.status) {
+        this.propagateParentStatus(existing);
+      }
+
+      return updateResult;
     });
   }
 
@@ -164,6 +239,11 @@ export class TaskServiceImpl implements TaskService {
 
       const parent = parentResult.value;
 
+      // Parent must be an epic (level 1) to have children
+      if (getTaskLevel(parent.type) !== TaskLevel.Epic) {
+        return err(new AppError('VALIDATION', 'Breakdown parent must be an epic-level task'));
+      }
+
       const projectResult = this.projectService.resolveProject(parent.projectId);
       if (!projectResult.ok) return projectResult;
       const project = projectResult.value;
@@ -174,6 +254,11 @@ export class TaskServiceImpl implements TaskService {
         const parsed = CreateTaskSchema.safeParse(subtask);
         if (!parsed.success) {
           return err(new AppError('VALIDATION', `Invalid subtask: ${parsed.error.message}`));
+        }
+
+        // Subtasks must be level 2 (work items)
+        if (getTaskLevel(parsed.data.type) === TaskLevel.Epic) {
+          return err(new AppError('VALIDATION', `Subtask "${parsed.data.name}" cannot be an epic`));
         }
 
         const taskIdResult = this.projectService.nextTaskId(project);
@@ -237,14 +322,20 @@ export class TaskServiceImpl implements TaskService {
         );
       }
 
+      const taskLevel = getTaskLevel(task.type);
+
       // Resolve project for getting ranked list
       const projectRef = projectIdOrName ?? task.projectId;
       const projectResult = this.projectService.resolveProject(projectRef);
       if (!projectResult.ok) return projectResult;
       const projectId = projectResult.value.id;
 
-      // Get all backlog tasks in rank order (excluding the task being moved)
-      const rankedResult = this.repo.getRankedTasks(projectId, TaskStatus.Backlog);
+      // Get ranked tasks at the same level (ranking only applies within same level)
+      const rankedResult = this.repo.getRankedTasksByLevel(
+        projectId,
+        taskLevel,
+        TaskStatus.Backlog,
+      );
       if (!rankedResult.ok) return rankedResult;
       const ranked = rankedResult.value.filter((t) => t.id !== taskId);
 
@@ -338,5 +429,52 @@ export class TaskServiceImpl implements TaskService {
 
       return this.repo.search(query, projectId);
     });
+  }
+
+  /**
+   * Auto-propagate status to the parent task after a child status change.
+   * - If a child moves to in-progress and parent is backlog/todo → parent becomes in-progress.
+   * - If all children are terminal (done/cancelled) → parent becomes done.
+   */
+  private propagateParentStatus(child: Task): void {
+    if (!child.parentId) return;
+
+    const parentResult = this.repo.findById(child.parentId);
+    if (!parentResult.ok || !parentResult.value) return;
+    const parent = parentResult.value;
+
+    // Re-read the child to get its current (post-update) status
+    const updatedChildResult = this.repo.findById(child.id);
+    if (!updatedChildResult.ok || !updatedChildResult.value) return;
+    const updatedChild = updatedChildResult.value;
+
+    // Child moved to in-progress → promote parent from backlog/todo to in-progress
+    if (
+      updatedChild.status === TaskStatus.InProgress &&
+      (parent.status === TaskStatus.Backlog || parent.status === TaskStatus.Todo)
+    ) {
+      this.repo.update(parent.id, { status: TaskStatus.InProgress });
+      return;
+    }
+
+    // Child became terminal → check if ALL children are terminal → parent becomes done
+    if (isTerminalStatus(updatedChild.status)) {
+      const siblingsResult = this.repo.findMany({
+        projectId: parent.projectId,
+        parentId: parent.id,
+      });
+      if (!siblingsResult.ok) return;
+      const allTerminal = siblingsResult.value.every((s) => isTerminalStatus(s.status));
+      if (allTerminal && !isTerminalStatus(parent.status)) {
+        const maxRankResult = this.repo.getMaxRankByLevel(
+          parent.projectId,
+          getTaskLevel(parent.type),
+        );
+        this.repo.update(parent.id, { status: TaskStatus.Done });
+        if (maxRankResult.ok) {
+          this.repo.rerank(parent.id, maxRankResult.value + RANK_GAP);
+        }
+      }
+    }
   }
 }

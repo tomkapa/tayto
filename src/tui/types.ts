@@ -10,13 +10,14 @@ export const ViewType = {
   ProjectSelector: 'project-selector',
   ProjectCreate: 'project-create',
   DependencyList: 'dependency-list',
+  EpicPicker: 'epic-picker',
   Help: 'help',
 } as const;
 export type ViewType = (typeof ViewType)[keyof typeof ViewType];
 
 export type FlashLevel = 'info' | 'warn' | 'error';
 
-export type PanelFocus = 'list' | 'detail';
+export type PanelFocus = 'epic' | 'list' | 'detail';
 
 export interface AppState {
   activeView: ViewType;
@@ -42,6 +43,18 @@ export interface AppState {
   isAddingDep: boolean;
   addDepInput: string;
   focusedPanel: PanelFocus;
+  /** All epics in the active project (level 1 tasks). */
+  epics: Task[];
+  /** Cursor position in the epic panel. */
+  epicSelectedIndex: number;
+  /** IDs of selected epics for filtering. Empty = show all. */
+  selectedEpicIds: Set<string>;
+  /** Scroll offset for detail panel (lines from top). */
+  detailScrollOffset: number;
+  /** True when reordering epics. */
+  isEpicReordering: boolean;
+  /** Snapshot of epics before reorder started (for cancel/revert). */
+  epicReorderSnapshot: Task[] | null;
 }
 
 export interface FormData {
@@ -78,4 +91,13 @@ export type Action =
   | { type: 'DEP_MOVE_CURSOR'; direction: 'up' | 'down' }
   | { type: 'SET_ADDING_DEP'; active: boolean }
   | { type: 'SET_ADD_DEP_INPUT'; input: string }
-  | { type: 'SET_PANEL_FOCUS'; panel: PanelFocus };
+  | { type: 'SET_PANEL_FOCUS'; panel: PanelFocus }
+  | { type: 'SET_EPICS'; epics: Task[] }
+  | { type: 'EPIC_MOVE_CURSOR'; direction: 'up' | 'down' }
+  | { type: 'TOGGLE_EPIC'; epicId: string }
+  | { type: 'CLEAR_EPIC_SELECTION' }
+  | { type: 'DETAIL_SCROLL'; direction: 'up' | 'down' }
+  | { type: 'DETAIL_RESET_SCROLL' }
+  | { type: 'ENTER_EPIC_REORDER' }
+  | { type: 'EPIC_REORDER_MOVE'; direction: 'up' | 'down' }
+  | { type: 'EXIT_EPIC_REORDER'; save: boolean };

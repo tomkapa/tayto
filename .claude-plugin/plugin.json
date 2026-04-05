@@ -1,5 +1,5 @@
 {
-  "name": "taskcli",
+  "name": "tayto",
   "description": "Smart task management for solo devs and AI agents — chain tayto CLI commands to plan, implement, and track work using the `tayto` CLI",
   "author": {
     "name": "tomkapa"

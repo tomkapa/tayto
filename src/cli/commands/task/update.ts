@@ -8,7 +8,7 @@ export function registerTaskUpdate(parent: Command, container: Container): void 
     .description('Update a task')
     .option('-n, --name <name>', 'Task name')
     .option('-d, --description <description>', 'Task description')
-    .option('-t, --type <type>', 'Task type: story, tech-debt, bug')
+    .option('-t, --type <type>', 'Task type: epic, story, tech-debt, bug')
     .option('-s, --status <status>', 'Task status')
     .option('--parent <parentId>', 'Parent task id')
     .option('--technical-notes <notes>', 'Replace technical notes')

@@ -21,6 +21,8 @@ interface Props {
   /** True when the selected task has at least one non-terminal blocker */
   isSelectedBlocked: boolean;
   isFocused?: boolean;
+  /** True when an epic filter is active (shown in title bar). */
+  epicFilterActive?: boolean;
 }
 
 // Fixed column widths
@@ -42,6 +44,7 @@ export function TaskList({
   nonTerminalDependentIds,
   isSelectedBlocked,
   isFocused = true,
+  epicFilterActive = false,
 }: Props) {
   const currentPage = Math.floor(selectedIndex / PAGE_SIZE);
   const viewStart = currentPage * PAGE_SIZE;
@@ -82,6 +85,7 @@ export function TaskList({
             REORDER
           </Text>
         )}
+        {epicFilterActive && <Text color={theme.titleHighlight}> [epic]</Text>}
         {filterText && <Text color={theme.titleFilter}> /{filterText}</Text>}
       </Box>
 

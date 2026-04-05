@@ -524,4 +524,121 @@ describe('appReducer', () => {
       });
     });
   });
+
+  describe('Epic panel state', () => {
+    const epicTask: Task = {
+      ...mockTask,
+      id: 'epic-1',
+      type: 'epic',
+      name: 'Epic 1',
+    };
+    const epicTask2: Task = {
+      ...mockTask,
+      id: 'epic-2',
+      type: 'epic',
+      name: 'Epic 2',
+    };
+
+    it('SET_EPICS stores epics and clamps cursor', () => {
+      const withIndex = { ...initialState, epicSelectedIndex: 5 };
+      const state = appReducer(withIndex, {
+        type: 'SET_EPICS',
+        epics: [epicTask, epicTask2],
+      });
+      expect(state.epics).toHaveLength(2);
+      expect(state.epicSelectedIndex).toBe(1); // clamped from 5 to max 1
+    });
+
+    it('EPIC_MOVE_CURSOR moves within bounds', () => {
+      let state = appReducer(initialState, {
+        type: 'SET_EPICS',
+        epics: [epicTask, epicTask2],
+      });
+      state = appReducer(state, { type: 'EPIC_MOVE_CURSOR', direction: 'down' });
+      expect(state.epicSelectedIndex).toBe(1);
+
+      // Can't go past end
+      state = appReducer(state, { type: 'EPIC_MOVE_CURSOR', direction: 'down' });
+      expect(state.epicSelectedIndex).toBe(1);
+
+      // Go back up
+      state = appReducer(state, { type: 'EPIC_MOVE_CURSOR', direction: 'up' });
+      expect(state.epicSelectedIndex).toBe(0);
+
+      // Can't go before 0
+      state = appReducer(state, { type: 'EPIC_MOVE_CURSOR', direction: 'up' });
+      expect(state.epicSelectedIndex).toBe(0);
+    });
+
+    it('EPIC_MOVE_CURSOR is no-op when empty', () => {
+      const state = appReducer(initialState, { type: 'EPIC_MOVE_CURSOR', direction: 'down' });
+      expect(state.epicSelectedIndex).toBe(0);
+    });
+
+    it('TOGGLE_EPIC adds and removes epic from selection', () => {
+      let state = appReducer(initialState, {
+        type: 'SET_EPICS',
+        epics: [epicTask, epicTask2],
+      });
+
+      // Select epic-1
+      state = appReducer(state, { type: 'TOGGLE_EPIC', epicId: 'epic-1' });
+      expect(state.selectedEpicIds.has('epic-1')).toBe(true);
+      expect(state.selectedEpicIds.size).toBe(1);
+      expect(state.selectedIndex).toBe(0); // resets task cursor
+
+      // Also select epic-2
+      state = appReducer(state, { type: 'TOGGLE_EPIC', epicId: 'epic-2' });
+      expect(state.selectedEpicIds.size).toBe(2);
+
+      // Deselect epic-1
+      state = appReducer(state, { type: 'TOGGLE_EPIC', epicId: 'epic-1' });
+      expect(state.selectedEpicIds.has('epic-1')).toBe(false);
+      expect(state.selectedEpicIds.size).toBe(1);
+    });
+
+    it('CLEAR_EPIC_SELECTION removes all selections', () => {
+      let state = appReducer(initialState, { type: 'TOGGLE_EPIC', epicId: 'epic-1' });
+      state = appReducer(state, { type: 'TOGGLE_EPIC', epicId: 'epic-2' });
+      expect(state.selectedEpicIds.size).toBe(2);
+
+      state = appReducer(state, { type: 'CLEAR_EPIC_SELECTION' });
+      expect(state.selectedEpicIds.size).toBe(0);
+      expect(state.selectedIndex).toBe(0);
+    });
+
+    it('initialState has empty epic state', () => {
+      expect(initialState.epics).toEqual([]);
+      expect(initialState.epicSelectedIndex).toBe(0);
+      expect(initialState.selectedEpicIds.size).toBe(0);
+    });
+
+    it('panel focus includes epic option', () => {
+      const state = appReducer(initialState, {
+        type: 'SET_PANEL_FOCUS',
+        panel: 'epic',
+      });
+      expect(state.focusedPanel).toBe('epic');
+    });
+  });
+
+  describe('EpicPicker navigation', () => {
+    it('NAVIGATE_TO EpicPicker pushes breadcrumb', () => {
+      const state = appReducer(initialState, {
+        type: 'NAVIGATE_TO',
+        view: ViewType.EpicPicker,
+      });
+      expect(state.activeView).toBe(ViewType.EpicPicker);
+      expect(state.breadcrumbs).toEqual([ViewType.TaskList, ViewType.EpicPicker]);
+    });
+
+    it('GO_BACK from EpicPicker returns to TaskList', () => {
+      let state = appReducer(initialState, {
+        type: 'NAVIGATE_TO',
+        view: ViewType.EpicPicker,
+      });
+      state = appReducer(state, { type: 'GO_BACK' });
+      expect(state.activeView).toBe(ViewType.TaskList);
+    });
+  });
 });

@@ -9,7 +9,7 @@ export function registerTaskCreate(parent: Command, container: Container): void 
     .requiredOption('-n, --name <name>', 'Task name')
     .option('-p, --project <project>', 'Project id or name')
     .option('-d, --description <description>', 'Task description')
-    .option('-t, --type <type>', 'Task type: story, tech-debt, bug', 'story')
+    .option('-t, --type <type>', 'Task type: epic, story, tech-debt, bug', 'story')
     .option('-s, --status <status>', 'Task status', 'backlog')
     .option('--parent <parentId>', 'Parent task id for subtask')
     .option('--technical-notes <notes>', 'Technical notes (markdown)')

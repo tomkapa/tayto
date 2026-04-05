@@ -12,6 +12,7 @@ const STATUS_DISPLAY: Record<string, { label: string; color: string }> = {
 };
 
 const TYPE_DISPLAY: Record<string, { label: string; color: string }> = {
+  [TaskType.Epic]: { label: 'epic', color: theme.status.modified },
   [TaskType.Story]: { label: 'story', color: theme.status.highlight },
   [TaskType.TechDebt]: { label: 'debt', color: theme.status.pending },
   [TaskType.Bug]: { label: 'bug', color: theme.status.error },

@@ -2,7 +2,8 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { Result } from '../types/common.js';
 import { ok, err } from '../types/common.js';
 import type { Task, CreateTaskInput, UpdateTaskInput, TaskFilter } from '../types/task.js';
-import { RANK_GAP, TERMINAL_STATUSES } from '../types/enums.js';
+import type { TaskLevel } from '../types/enums.js';
+import { RANK_GAP, TERMINAL_STATUSES, getTaskLevel, WORK_TYPES } from '../types/enums.js';
 import { AppError } from '../errors/app-error.js';
 import { logger } from '../logging/logger.js';
 import { NOT_DELETED, type TaskRow, rowToTask } from './shared.js';
@@ -28,6 +29,14 @@ export interface TaskRepository {
   /** Min rank among terminal (done/cancelled) tasks. Returns null if none. */
   getMinTerminalRank(projectId: string): Result<number | null>;
   getRankedTasks(projectId: string, status?: string): Result<Task[]>;
+  /** Level-aware max rank (scoped to types matching the given level). */
+  getMaxRankByLevel(projectId: string, level: TaskLevel): Result<number>;
+  /** Level-aware max active rank. */
+  getMaxActiveRankByLevel(projectId: string, level: TaskLevel): Result<number>;
+  /** Level-aware min terminal rank. */
+  getMinTerminalRankByLevel(projectId: string, level: TaskLevel): Result<number | null>;
+  /** Ranked tasks filtered to the same level. */
+  getRankedTasksByLevel(projectId: string, level: TaskLevel, status?: string): Result<Task[]>;
   /** FTS5 ranked search across all text fields */
   search(query: string, projectId?: string): Result<SearchResult[]>;
 }
@@ -39,13 +48,15 @@ export class SqliteTaskRepository implements TaskRepository {
     return logger.startSpan('TaskRepository.insert', () => {
       try {
         const now = new Date().toISOString();
+        const level = getTaskLevel(input.type);
 
         // New tasks go after the last active task but before terminal (done/cancelled) tasks
-        const maxActiveResult = this.getMaxActiveRank(input.projectId);
+        // within the same level (epics rank among epics, work items among work items)
+        const maxActiveResult = this.getMaxActiveRankByLevel(input.projectId, level);
         if (!maxActiveResult.ok) return maxActiveResult;
         const maxActiveRank = maxActiveResult.value;
 
-        const minTerminalResult = this.getMinTerminalRank(input.projectId);
+        const minTerminalResult = this.getMinTerminalRankByLevel(input.projectId, level);
         if (!minTerminalResult.ok) return minTerminalResult;
         const minTerminalRank = minTerminalResult.value;
 
@@ -104,7 +115,7 @@ export class SqliteTaskRepository implements TaskRepository {
   findMany(filter: TaskFilter): Result<Task[]> {
     try {
       const conditions: string[] = [NOT_DELETED];
-      const params: unknown[] = [];
+      const params: string[] = [];
 
       if (filter.projectId) {
         conditions.push('project_id = ?');
@@ -118,9 +129,20 @@ export class SqliteTaskRepository implements TaskRepository {
         conditions.push('type = ?');
         params.push(filter.type);
       }
+      if (filter.level !== undefined) {
+        const typesForLevel = this.getTypesForLevel(filter.level as TaskLevel);
+        const placeholders = typesForLevel.map(() => '?').join(', ');
+        conditions.push(`type IN (${placeholders})`);
+        params.push(...typesForLevel);
+      }
       if (filter.parentId) {
         conditions.push('parent_id = ?');
         params.push(filter.parentId);
+      }
+      if (filter.parentIds && filter.parentIds.length > 0) {
+        const placeholders = filter.parentIds.map(() => '?').join(', ');
+        conditions.push(`parent_id IN (${placeholders})`);
+        params.push(...filter.parentIds);
       }
       if (filter.search) {
         // Use FTS5 for tokenized, ranked search with prefix matching
@@ -291,7 +313,7 @@ export class SqliteTaskRepository implements TaskRepository {
   getRankedTasks(projectId: string, status?: string): Result<Task[]> {
     try {
       let sql: string;
-      let params: unknown[];
+      let params: string[];
       if (status) {
         sql = `SELECT * FROM tasks WHERE project_id = ? AND ${NOT_DELETED} AND status = ? ORDER BY rank ASC`;
         params = [projectId, status];
@@ -306,6 +328,80 @@ export class SqliteTaskRepository implements TaskRepository {
     }
   }
 
+  private getTypesForLevel(level: TaskLevel): string[] {
+    if (level === 1) return ['epic'];
+    return [...WORK_TYPES];
+  }
+
+  getMaxRankByLevel(projectId: string, level: TaskLevel): Result<number> {
+    try {
+      const types = this.getTypesForLevel(level);
+      const placeholders = types.map(() => '?').join(', ');
+      const row = this.db
+        .prepare(
+          `SELECT MAX(rank) as max_rank FROM tasks WHERE project_id = ? AND ${NOT_DELETED} AND type IN (${placeholders})`,
+        )
+        .get(projectId, ...types) as { max_rank: number | null } | undefined;
+      return ok(row?.max_rank ?? 0);
+    } catch (e) {
+      return err(new AppError('DB_ERROR', 'Failed to get max rank by level', e));
+    }
+  }
+
+  getMaxActiveRankByLevel(projectId: string, level: TaskLevel): Result<number> {
+    try {
+      const types = this.getTypesForLevel(level);
+      const typePlaceholders = types.map(() => '?').join(', ');
+      const row = this.db
+        .prepare(
+          `SELECT MAX(rank) as max_rank FROM tasks WHERE project_id = ? AND ${NOT_DELETED} AND type IN (${typePlaceholders}) AND status NOT IN (${TERMINAL_PLACEHOLDERS})`,
+        )
+        .get(projectId, ...types, ...TERMINAL_STATUS_ARRAY) as
+        | { max_rank: number | null }
+        | undefined;
+      return ok(row?.max_rank ?? 0);
+    } catch (e) {
+      return err(new AppError('DB_ERROR', 'Failed to get max active rank by level', e));
+    }
+  }
+
+  getMinTerminalRankByLevel(projectId: string, level: TaskLevel): Result<number | null> {
+    try {
+      const types = this.getTypesForLevel(level);
+      const typePlaceholders = types.map(() => '?').join(', ');
+      const row = this.db
+        .prepare(
+          `SELECT MIN(rank) as min_rank FROM tasks WHERE project_id = ? AND ${NOT_DELETED} AND type IN (${typePlaceholders}) AND status IN (${TERMINAL_PLACEHOLDERS})`,
+        )
+        .get(projectId, ...types, ...TERMINAL_STATUS_ARRAY) as
+        | { min_rank: number | null }
+        | undefined;
+      return ok(row?.min_rank ?? null);
+    } catch (e) {
+      return err(new AppError('DB_ERROR', 'Failed to get min terminal rank by level', e));
+    }
+  }
+
+  getRankedTasksByLevel(projectId: string, level: TaskLevel, status?: string): Result<Task[]> {
+    try {
+      const types = this.getTypesForLevel(level);
+      const typePlaceholders = types.map(() => '?').join(', ');
+      let sql: string;
+      let params: string[];
+      if (status) {
+        sql = `SELECT * FROM tasks WHERE project_id = ? AND ${NOT_DELETED} AND type IN (${typePlaceholders}) AND status = ? ORDER BY rank ASC`;
+        params = [projectId, ...types, status];
+      } else {
+        sql = `SELECT * FROM tasks WHERE project_id = ? AND ${NOT_DELETED} AND type IN (${typePlaceholders}) ORDER BY rank ASC`;
+        params = [projectId, ...types];
+      }
+      const rows = this.db.prepare(sql).all(...params) as TaskRow[];
+      return ok(rows.map(rowToTask));
+    } catch (e) {
+      return err(new AppError('DB_ERROR', 'Failed to get ranked tasks by level', e));
+    }
+  }
+
   search(query: string, projectId?: string): Result<SearchResult[]> {
     return logger.startSpan('TaskRepository.search', () => {
       try {
@@ -316,7 +412,7 @@ export class SqliteTaskRepository implements TaskRepository {
           .join(' ');
 
         let sql: string;
-        let params: unknown[];
+        let params: string[];
 
         if (projectId) {
           sql = `SELECT t.*, bm25(tasks_fts) AS fts_rank

@@ -25,6 +25,12 @@ export const initialState: AppState = {
   isAddingDep: false,
   addDepInput: '',
   focusedPanel: 'list',
+  detailScrollOffset: 0,
+  epics: [],
+  epicSelectedIndex: 0,
+  selectedEpicIds: new Set(),
+  isEpicReordering: false,
+  epicReorderSnapshot: null,
 };
 
 export function appReducer(state: AppState, action: Action): AppState {
@@ -102,7 +108,7 @@ export function appReducer(state: AppState, action: Action): AppState {
         action.direction === 'up'
           ? Math.max(0, state.selectedIndex - 1)
           : Math.min(maxIndex, state.selectedIndex + 1);
-      return { ...state, selectedIndex: newIndex };
+      return { ...state, selectedIndex: newIndex, detailScrollOffset: 0 };
     }
 
     case 'SET_CURSOR': {
@@ -111,7 +117,7 @@ export function appReducer(state: AppState, action: Action): AppState {
     }
 
     case 'SELECT_TASK':
-      return { ...state, selectedTask: action.task };
+      return { ...state, selectedTask: action.task, detailScrollOffset: 0 };
 
     case 'SET_FORM_DATA':
       return { ...state, formData: action.data };
@@ -194,5 +200,90 @@ export function appReducer(state: AppState, action: Action): AppState {
 
     case 'SET_PANEL_FOCUS':
       return { ...state, focusedPanel: action.panel };
+
+    case 'DETAIL_SCROLL':
+      return {
+        ...state,
+        detailScrollOffset:
+          action.direction === 'up'
+            ? Math.max(0, state.detailScrollOffset - 1)
+            : state.detailScrollOffset + 1,
+      };
+
+    case 'DETAIL_RESET_SCROLL':
+      return { ...state, detailScrollOffset: 0 };
+
+    case 'SET_EPICS':
+      return {
+        ...state,
+        epics: action.epics,
+        epicSelectedIndex: Math.min(state.epicSelectedIndex, Math.max(0, action.epics.length - 1)),
+      };
+
+    case 'EPIC_MOVE_CURSOR': {
+      if (state.epics.length === 0) return state;
+      const maxIdx = Math.max(0, state.epics.length - 1);
+      const newIdx =
+        action.direction === 'up'
+          ? Math.max(0, state.epicSelectedIndex - 1)
+          : Math.min(maxIdx, state.epicSelectedIndex + 1);
+      return { ...state, epicSelectedIndex: newIdx };
+    }
+
+    case 'TOGGLE_EPIC': {
+      const next = new Set(state.selectedEpicIds);
+      if (next.has(action.epicId)) {
+        next.delete(action.epicId);
+      } else {
+        next.add(action.epicId);
+      }
+      return { ...state, selectedEpicIds: next, selectedIndex: 0 };
+    }
+
+    case 'CLEAR_EPIC_SELECTION':
+      return { ...state, selectedEpicIds: new Set(), selectedIndex: 0 };
+
+    case 'ENTER_EPIC_REORDER':
+      return {
+        ...state,
+        isEpicReordering: true,
+        epicReorderSnapshot: [...state.epics],
+      };
+
+    case 'EPIC_REORDER_MOVE': {
+      if (!state.isEpicReordering) return state;
+      const idx = state.epicSelectedIndex;
+      const epics = [...state.epics];
+      const swapIdx = action.direction === 'up' ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= epics.length) return state;
+
+      const current = epics[idx];
+      const swap = epics[swapIdx];
+      if (!current || !swap) return state;
+      epics[idx] = swap;
+      epics[swapIdx] = current;
+
+      return {
+        ...state,
+        epics,
+        epicSelectedIndex: swapIdx,
+      };
+    }
+
+    case 'EXIT_EPIC_REORDER': {
+      if (!action.save && state.epicReorderSnapshot) {
+        return {
+          ...state,
+          isEpicReordering: false,
+          epics: state.epicReorderSnapshot,
+          epicReorderSnapshot: null,
+        };
+      }
+      return {
+        ...state,
+        isEpicReordering: false,
+        epicReorderSnapshot: null,
+      };
+    }
   }
 }

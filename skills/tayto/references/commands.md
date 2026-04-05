@@ -25,13 +25,13 @@ tayto project set-default <idOrKeyOrName>
 
 ```
 tayto task create [-n <name>] [-p <project>] [-d <description>]
-                 [-t story|tech-debt|bug] [-s <status>]
+                 [-t epic|story|tech-debt|bug] [-s <status>]
                  [--parent <parentId>] [--technical-notes <md>]
                  [--additional-requirements <md>]
                  [--depends-on <id>...]
 
 tayto task list [-p <project>] [-s <status>] [-t <type>]
-               [--parent <parentId>] [--search <text>]
+               [-l <level>] [--parent <parentId>] [--search <text>]
 
 tayto task show <id>
 
@@ -53,12 +53,17 @@ tayto task export [-p <project>] [-o <outputFile>]
 tayto task import [-p <project>] [-f <inputFile>]
 ```
 
-**Status values**: `backlog`, `in-progress`, `done`, `cancelled`  
-**Type values**: `story`, `tech-debt`, `bug`
+**Status values**: `backlog`, `todo`, `in-progress`, `review`, `done`, `cancelled`  
+**Type values**: `epic`, `story`, `tech-debt`, `bug`  
+**Level values**: `1` (epic), `2` (story/tech-debt/bug — default)
 
 The `list` command outputs tasks in rank order. Default status filter is `backlog`.
 
-The `breakdown` command expects a JSON file containing an array of subtask objects:
+- `-l 1` lists only epics; `-l 2` (default) lists only work items.
+- `--parent <epicId>` filters to children of a specific epic.
+- Ranking is scoped by level — epics rank among epics, work items among work items.
+
+The `breakdown` command requires an epic parent and expects a JSON file containing an array of subtask objects (must be level 2 types — not epic):
 ```json
 [
   { "name": "Subtask A", "description": "...", "type": "story" },
@@ -66,10 +71,21 @@ The `breakdown` command expects a JSON file containing an array of subtask objec
 ]
 ```
 
-The `rank` command uses Jira-style relative positioning:
+The `rank` command uses Jira-style relative positioning (within the same level):
 - `--after <id>` places task immediately after the given task
 - `--before <id>` places task immediately before the given task
 - `--position <n>` places at 1-based position in the list
+- Anchor task must be at the same level as the task being ranked
+
+**Parent-child constraints:**
+- Only epics can be parents (`--parent <storyId>` is rejected).
+- Epics cannot have a parent.
+- Changing type from epic to a work type is rejected if the epic has children.
+- Changing type to epic is rejected if the task has a parent.
+
+**Auto-status propagation:**
+- Child → `in-progress` while parent is `backlog`/`todo` → parent auto-moves to `in-progress`.
+- All children terminal (`done`/`cancelled`) → parent auto-moves to `done`.
 
 ---
 

@@ -80,7 +80,7 @@ describe('PortabilityService.exportTasks', () => {
   });
 
   it('includes parentId in exported tasks', () => {
-    const parent = container.taskService.createTask({ name: 'Parent' });
+    const parent = container.taskService.createTask({ name: 'Parent', type: 'epic' });
     if (!parent.ok) throw new Error('setup failed');
 
     container.taskService.createTask({ name: 'Child', parentId: parent.value.id });
@@ -211,7 +211,7 @@ describe('PortabilityService.importTasks', () => {
   it('handles parentId remapping within import set', () => {
     const data = {
       tasks: [
-        { id: 'EXT-1', name: 'Parent' },
+        { id: 'EXT-1', name: 'Parent', type: 'epic' },
         { id: 'EXT-2', name: 'Child', parentId: 'EXT-1' },
       ],
     };
@@ -228,11 +228,12 @@ describe('PortabilityService.importTasks', () => {
   });
 
   it('handles deeply nested parent-child relationships', () => {
+    // With level constraints, only epic -> work nesting is valid (1 level deep).
+    // Multi-level nesting (grandparent->child->grandchild) requires epic parent.
     const data = {
       tasks: [
-        { id: 'C', name: 'Grandchild', parentId: 'B' },
-        { id: 'A', name: 'Grandparent' },
-        { id: 'B', name: 'Child', parentId: 'A' },
+        { id: 'A', name: 'Epic Parent', type: 'epic' },
+        { id: 'B', name: 'Child Story', parentId: 'A' },
       ],
     };
 
@@ -240,12 +241,7 @@ describe('PortabilityService.importTasks', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.value.imported).toBe(3);
-
-    const grandchild = container.taskService.getTask(result.value.idMap['C']!);
-    expect(grandchild.ok).toBe(true);
-    if (!grandchild.ok) return;
-    expect(grandchild.value.parentId).toBe(result.value.idMap['B']);
+    expect(result.value.imported).toBe(2);
 
     const child = container.taskService.getTask(result.value.idMap['B']!);
     expect(child.ok).toBe(true);

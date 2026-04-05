@@ -7,11 +7,22 @@ interface KeyHint {
   desc: string;
 }
 
-function getKeyHints(view: string, isSearchActive: boolean): KeyHint[] {
+function getKeyHints(view: string, isSearchActive: boolean, focusedPanel: string): KeyHint[] {
   if (isSearchActive) {
     return [
       { key: 'enter', desc: 'apply' },
       { key: 'esc', desc: 'cancel' },
+    ];
+  }
+  if (view === 'task-list' && focusedPanel === 'epic') {
+    return [
+      { key: 'j/k', desc: 'nav' },
+      { key: 'space', desc: 'toggle' },
+      { key: '←', desc: 'reorder' },
+      { key: '0', desc: 'clear' },
+      { key: 'tab', desc: 'tasks' },
+      { key: '?', desc: 'help' },
+      { key: 'q', desc: 'quit' },
     ];
   }
   if (view === 'task-list') {
@@ -21,11 +32,14 @@ function getKeyHints(view: string, isSearchActive: boolean): KeyHint[] {
       { key: 'e', desc: 'edit' },
       { key: 'd', desc: 'del' },
       { key: 's', desc: 'status' },
+      { key: 'a', desc: 'assign' },
+      { key: 'A', desc: 'unassign' },
       { key: '←', desc: 'reorder' },
       { key: '/', desc: 'search' },
       { key: 'p', desc: 'project' },
       { key: 'f', desc: 'status-f' },
       { key: 't', desc: 'type-f' },
+      { key: 'tab', desc: 'panel' },
       { key: '?', desc: 'help' },
       { key: 'q', desc: 'quit' },
     ];
@@ -55,13 +69,13 @@ interface Props {
 export function Header({ state }: Props) {
   const projectName = state.activeProject?.name ?? 'none';
   const taskCount = state.tasks.length;
-  const hints = getKeyHints(state.activeView, state.isSearchActive);
+  const hints = getKeyHints(state.activeView, state.isSearchActive, state.focusedPanel);
 
   return (
     <Box flexDirection="column">
       <Box gap={2}>
         <Text color={theme.logo} bold>
-          TaskCLI
+          Tayto
         </Text>
         <Text color={theme.logo}>Project:</Text>
         <Text color="white" bold>

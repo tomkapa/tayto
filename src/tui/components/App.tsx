@@ -1,7 +1,13 @@
 import { useReducer, useEffect, useCallback, useMemo } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import type { Container } from '../../cli/container.js';
-import { TaskStatus, TaskType, DependencyType, isTerminalStatus } from '../../types/enums.js';
+import {
+  TaskStatus,
+  TaskType,
+  TaskLevel,
+  DependencyType,
+  isTerminalStatus,
+} from '../../types/enums.js';
 import type { Task, DependencyEntry } from '../../types/task.js';
 import type { Project } from '../../types/project.js';
 import { ViewType } from '../types.js';
@@ -18,6 +24,8 @@ import { ProjectForm } from './ProjectForm.js';
 import { HelpOverlay } from './HelpOverlay.js';
 import { ConfirmDialog } from './ConfirmDialog.js';
 import { DependencyList } from './DependencyList.js';
+import { EpicPanel } from './EpicPanel.js';
+import { EpicPicker } from './EpicPicker.js';
 import { openAllMermaidDiagrams } from './Markdown.js';
 import { theme } from '../theme.js';
 import { logger } from '../../logging/logger.js';
@@ -52,9 +60,13 @@ export function App({ container, initialProject }: Props) {
 
   const loadTasks = useCallback(() => {
     logger.startSpan('TUI.loadTasks', () => {
-      const filter = { ...state.filter };
+      const filter = { ...state.filter, level: TaskLevel.Work };
       if (state.activeProject) {
         filter.projectId = state.activeProject.id;
+      }
+      // Apply epic filter: when epics are selected, show only their children
+      if (state.selectedEpicIds.size > 0) {
+        filter.parentIds = [...state.selectedEpicIds];
       }
       const result = container.taskService.listTasks(filter);
       if (result.ok) {
@@ -65,7 +77,20 @@ export function App({ container, initialProject }: Props) {
         dispatch({ type: 'FLASH', message: result.error.message, level: 'error' });
       }
     });
-  }, [container, state.filter, state.activeProject]);
+  }, [container, state.filter, state.activeProject, state.selectedEpicIds]);
+
+  const loadEpics = useCallback(() => {
+    if (!state.activeProject) return;
+    const result = container.taskService.listTasks({
+      projectId: state.activeProject.id,
+      level: TaskLevel.Epic,
+    });
+    if (result.ok) {
+      dispatch({ type: 'SET_EPICS', epics: result.value });
+    } else {
+      logger.error('TUI.loadEpics: failed', result.error);
+    }
+  }, [container, state.activeProject]);
 
   const loadDeps = useCallback(
     (taskId: string) => {
@@ -97,11 +122,12 @@ export function App({ container, initialProject }: Props) {
           dispatch({ type: 'SELECT_TASK', task: result.value });
         }
         loadTasks();
+        loadEpics();
       } else {
         dispatch({ type: 'FLASH', message: result.error.message, level: 'error' });
       }
     },
-    [container, state.selectedTask, loadTasks],
+    [container, state.selectedTask, loadTasks, loadEpics],
   );
 
   const saveReorder = useCallback(() => {
@@ -129,6 +155,30 @@ export function App({ container, initialProject }: Props) {
     loadTasks();
   }, [container, state.tasks, state.selectedIndex, loadTasks]);
 
+  const saveEpicReorder = useCallback(() => {
+    const epics = state.epics;
+    const idx = state.epicSelectedIndex;
+    const epic = epics[idx];
+    if (!epic) return;
+
+    const prev = epics[idx - 1];
+    const next = epics[idx + 1];
+
+    const result = prev
+      ? container.taskService.rerankTask({ taskId: epic.id, afterId: prev.id })
+      : next
+        ? container.taskService.rerankTask({ taskId: epic.id, beforeId: next.id })
+        : container.taskService.rerankTask({ taskId: epic.id, position: 1 });
+
+    dispatch({ type: 'EXIT_EPIC_REORDER', save: result.ok });
+    dispatch({
+      type: 'FLASH',
+      message: result.ok ? 'Epic rank saved' : result.error.message,
+      level: result.ok ? 'info' : 'error',
+    });
+    loadEpics();
+  }, [container, state.epics, state.epicSelectedIndex, loadEpics]);
+
   // Initial load
   useEffect(() => {
     loadProjects();
@@ -153,12 +203,13 @@ export function App({ container, initialProject }: Props) {
     }
   }, [state.projects, state.activeProject, initialProject, container]);
 
-  // Reload tasks when project or filter changes
+  // Reload tasks and epics when project or filter changes
   useEffect(() => {
     if (state.activeProject) {
       loadTasks();
+      loadEpics();
     }
-  }, [state.activeProject, state.filter, loadTasks]);
+  }, [state.activeProject, state.filter, loadTasks, loadEpics]);
 
   // Auto-clear flash
   useEffect(() => {
@@ -186,6 +237,7 @@ export function App({ container, initialProject }: Props) {
             dispatch({ type: 'GO_BACK' });
           }
           loadTasks();
+          loadEpics();
         } else {
           dispatch({ type: 'FLASH', message: result.error.message, level: 'error' });
           dispatch({ type: 'CANCEL_DELETE' });
@@ -202,12 +254,13 @@ export function App({ container, initialProject }: Props) {
       return;
     }
 
-    // Form/selector views handle their own input
+    // Form/selector/picker views handle their own input
     if (
       state.activeView === ViewType.TaskCreate ||
       state.activeView === ViewType.TaskEdit ||
       state.activeView === ViewType.ProjectSelector ||
-      state.activeView === ViewType.ProjectCreate
+      state.activeView === ViewType.ProjectCreate ||
+      state.activeView === ViewType.EpicPicker
     ) {
       return;
     }
@@ -285,6 +338,28 @@ export function App({ container, initialProject }: Props) {
       return;
     }
 
+    // Epic reorder mode
+    if (state.isEpicReordering) {
+      if (key.upArrow || input === 'k') {
+        dispatch({ type: 'EPIC_REORDER_MOVE', direction: 'up' });
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        dispatch({ type: 'EPIC_REORDER_MOVE', direction: 'down' });
+        return;
+      }
+      if (key.rightArrow) {
+        saveEpicReorder();
+        return;
+      }
+      if (key.escape || key.leftArrow) {
+        dispatch({ type: 'EXIT_EPIC_REORDER', save: false });
+        dispatch({ type: 'FLASH', message: 'Epic reorder cancelled', level: 'info' });
+        return;
+      }
+      return;
+    }
+
     // Reorder mode
     if (state.isReordering) {
       if (key.upArrow || input === 'k') {
@@ -326,13 +401,53 @@ export function App({ container, initialProject }: Props) {
       return;
     }
 
-    // Tab: toggle panel focus in split view
-    if (key.tab && state.activeView === ViewType.TaskList && previewTask) {
-      dispatch({
-        type: 'SET_PANEL_FOCUS',
-        panel: state.focusedPanel === 'list' ? 'detail' : 'list',
-      });
+    // Tab: cycle panel focus (epic -> list -> detail -> epic)
+    if (key.tab && state.activeView === ViewType.TaskList) {
+      const panels: Array<'epic' | 'list' | 'detail'> = previewTask
+        ? ['epic', 'list', 'detail']
+        : ['epic', 'list'];
+      const curIdx = panels.indexOf(state.focusedPanel);
+      const nextPanel = panels[(curIdx + 1) % panels.length] ?? 'list';
+      dispatch({ type: 'SET_PANEL_FOCUS', panel: nextPanel });
       return;
+    }
+
+    // Task List — epic panel focused
+    if (state.activeView === ViewType.TaskList && state.focusedPanel === 'epic') {
+      if (key.upArrow || input === 'k') {
+        dispatch({ type: 'EPIC_MOVE_CURSOR', direction: 'up' });
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        dispatch({ type: 'EPIC_MOVE_CURSOR', direction: 'down' });
+        return;
+      }
+      if (input === ' ' || key.return) {
+        const epic = state.epics[state.epicSelectedIndex];
+        if (epic) {
+          dispatch({ type: 'TOGGLE_EPIC', epicId: epic.id });
+        }
+        return;
+      }
+      if (input === '0') {
+        dispatch({ type: 'CLEAR_EPIC_SELECTION' });
+        return;
+      }
+      if (key.leftArrow) {
+        if (state.epics.length > 0) {
+          dispatch({ type: 'ENTER_EPIC_REORDER' });
+          dispatch({
+            type: 'FLASH',
+            message: 'Reorder: ↑↓ move, → save, ← cancel',
+            level: 'info',
+          });
+        }
+        return;
+      }
+      if (input === 'q') {
+        exit();
+        return;
+      }
     }
 
     // Task List — list panel focused
@@ -390,6 +505,30 @@ export function App({ container, initialProject }: Props) {
         }
         return;
       }
+      if (input === 'a') {
+        const task = state.tasks[state.selectedIndex];
+        if (task) {
+          dispatch({ type: 'SELECT_TASK', task });
+          dispatch({ type: 'NAVIGATE_TO', view: ViewType.EpicPicker });
+        }
+        return;
+      }
+      if (input === 'A') {
+        const task = state.tasks[state.selectedIndex];
+        if (task && task.parentId) {
+          const result = container.taskService.updateTask(task.id, { parentId: null });
+          if (result.ok) {
+            dispatch({ type: 'FLASH', message: 'Unassigned from epic', level: 'info' });
+            loadTasks();
+            loadEpics();
+          } else {
+            dispatch({ type: 'FLASH', message: result.error.message, level: 'error' });
+          }
+        } else if (task) {
+          dispatch({ type: 'FLASH', message: 'Task has no epic', level: 'warn' });
+        }
+        return;
+      }
       if (input === '/') {
         dispatch({ type: 'SET_SEARCH_ACTIVE', active: true });
         dispatch({ type: 'SET_SEARCH_QUERY', query: '' });
@@ -399,8 +538,24 @@ export function App({ container, initialProject }: Props) {
         dispatch({ type: 'NAVIGATE_TO', view: ViewType.ProjectSelector });
         return;
       }
-      // Left arrow: enter reorder mode
+      // Left arrow: enter reorder mode (only when no epic filter active)
       if (key.leftArrow) {
+        if (state.selectedEpicIds.size > 0) {
+          dispatch({
+            type: 'FLASH',
+            message: 'Clear epic filter (0) before reordering',
+            level: 'warn',
+          });
+          return;
+        }
+        if (state.filter.status || state.filter.type || state.filter.search) {
+          dispatch({
+            type: 'FLASH',
+            message: 'Clear filters (0) before reordering',
+            level: 'warn',
+          });
+          return;
+        }
         if (state.tasks.length > 0) {
           dispatch({ type: 'ENTER_REORDER' });
           dispatch({ type: 'FLASH', message: 'Reorder: ↑↓ move, → save, ← cancel', level: 'info' });
@@ -433,6 +588,14 @@ export function App({ container, initialProject }: Props) {
 
     // Task List — detail panel focused (preview task shortcuts)
     if (state.activeView === ViewType.TaskList && state.focusedPanel === 'detail' && previewTask) {
+      if (key.upArrow || input === 'k') {
+        dispatch({ type: 'DETAIL_SCROLL', direction: 'up' });
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        dispatch({ type: 'DETAIL_SCROLL', direction: 'down' });
+        return;
+      }
       if (input === 'e') {
         dispatch({ type: 'SELECT_TASK', task: previewTask });
         dispatch({ type: 'NAVIGATE_TO', view: ViewType.TaskEdit });
@@ -468,6 +631,14 @@ export function App({ container, initialProject }: Props) {
 
     // Task Detail (full-screen)
     if (state.activeView === ViewType.TaskDetail) {
+      if (key.upArrow || input === 'k') {
+        dispatch({ type: 'DETAIL_SCROLL', direction: 'up' });
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        dispatch({ type: 'DETAIL_SCROLL', direction: 'down' });
+        return;
+      }
       if (input === 'e' && state.selectedTask) {
         dispatch({ type: 'NAVIGATE_TO', view: ViewType.TaskEdit });
         return;
@@ -610,21 +781,54 @@ export function App({ container, initialProject }: Props) {
         loadDeps(taskId);
         dispatch({ type: 'GO_BACK' });
         loadTasks();
+        loadEpics();
       } else {
         const result = container.taskService.createTask(data, state.activeProject?.id);
         if (result.ok) {
           dispatch({ type: 'FLASH', message: 'Task created', level: 'info' });
           dispatch({ type: 'GO_BACK' });
           loadTasks();
+          loadEpics();
         } else {
           dispatch({ type: 'FLASH', message: result.error.message, level: 'error' });
         }
       }
     },
-    [container, state.activeView, state.selectedTask, state.activeProject, loadTasks, loadDeps],
+    [
+      container,
+      state.activeView,
+      state.selectedTask,
+      state.activeProject,
+      loadTasks,
+      loadDeps,
+      loadEpics,
+    ],
   );
 
   const handleFormCancel = useCallback(() => {
+    dispatch({ type: 'GO_BACK' });
+  }, []);
+
+  const handleEpicPickerSelect = useCallback(
+    (epicId: string | null) => {
+      if (!state.selectedTask) return;
+      const result = container.taskService.updateTask(state.selectedTask.id, {
+        parentId: epicId,
+      });
+      if (result.ok) {
+        const msg = epicId ? `Assigned to ${epicId}` : 'Unassigned from epic';
+        dispatch({ type: 'FLASH', message: msg, level: 'info' });
+        loadTasks();
+        loadEpics();
+      } else {
+        dispatch({ type: 'FLASH', message: result.error.message, level: 'error' });
+      }
+      dispatch({ type: 'GO_BACK' });
+    },
+    [container, state.selectedTask, loadTasks, loadEpics],
+  );
+
+  const handleEpicPickerCancel = useCallback(() => {
     dispatch({ type: 'GO_BACK' });
   }, []);
 
@@ -639,7 +843,11 @@ export function App({ container, initialProject }: Props) {
       const result = container.projectService.updateProject(project.id, { isDefault: true });
       if (result.ok) {
         logger.info(`TUI.setDefault: set key=${result.value.key} as default`);
-        dispatch({ type: 'FLASH', message: `Default project: ${result.value.name}`, level: 'info' });
+        dispatch({
+          type: 'FLASH',
+          message: `Default project: ${result.value.name}`,
+          level: 'info',
+        });
         loadProjects();
       } else {
         logger.error('TUI.setDefault: failed', result.error);
@@ -734,7 +942,14 @@ export function App({ container, initialProject }: Props) {
 
         {!state.confirmDelete && state.activeView === ViewType.TaskList && (
           <Box flexDirection="row" flexGrow={1}>
-            <Box width="50%">
+            <EpicPanel
+              epics={state.epics}
+              selectedIndex={state.epicSelectedIndex}
+              selectedEpicIds={state.selectedEpicIds}
+              isFocused={state.focusedPanel === 'epic'}
+              isReordering={state.isEpicReordering}
+            />
+            <Box flexGrow={2}>
               <TaskList
                 tasks={state.tasks}
                 selectedIndex={state.selectedIndex}
@@ -755,6 +970,7 @@ export function App({ container, initialProject }: Props) {
                 }
                 isSelectedBlocked={state.depBlockers.some((t) => !isTerminalStatus(t.status))}
                 isFocused={state.focusedPanel === 'list'}
+                epicFilterActive={state.selectedEpicIds.size > 0}
               />
             </Box>
             <Box flexGrow={1}>
@@ -766,6 +982,7 @@ export function App({ container, initialProject }: Props) {
                   related={state.depRelated}
                   duplicates={state.depDuplicates}
                   isFocused={state.focusedPanel === 'detail'}
+                  scrollOffset={state.detailScrollOffset}
                 />
               ) : (
                 <Box
@@ -796,6 +1013,7 @@ export function App({ container, initialProject }: Props) {
             dependents={state.depDependents}
             related={state.depRelated}
             duplicates={state.depDuplicates}
+            scrollOffset={state.detailScrollOffset}
           />
         )}
 
@@ -824,6 +1042,15 @@ export function App({ container, initialProject }: Props) {
               onCancel={handleFormCancel}
             />
           )}
+
+        {!state.confirmDelete && state.activeView === ViewType.EpicPicker && state.selectedTask && (
+          <EpicPicker
+            epics={state.epics}
+            currentEpicId={state.selectedTask.parentId}
+            onSelect={handleEpicPickerSelect}
+            onCancel={handleEpicPickerCancel}
+          />
+        )}
 
         {!state.confirmDelete && state.activeView === ViewType.ProjectSelector && (
           <ProjectSelector

@@ -9,11 +9,41 @@ export const TaskStatus = {
 export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
 
 export const TaskType = {
+  Epic: 'epic',
   Story: 'story',
   TechDebt: 'tech-debt',
   Bug: 'bug',
 } as const;
 export type TaskType = (typeof TaskType)[keyof typeof TaskType];
+
+/**
+ * Task level derived from type.
+ * Level 1: epics (grouping/planning layer)
+ * Level 2: stories, tech-debt, bugs (execution layer)
+ */
+export const TaskLevel = {
+  Epic: 1,
+  Work: 2,
+} as const;
+export type TaskLevel = (typeof TaskLevel)[keyof typeof TaskLevel];
+
+const TYPE_TO_LEVEL: Record<string, TaskLevel> = {
+  [TaskType.Epic]: TaskLevel.Epic,
+  [TaskType.Story]: TaskLevel.Work,
+  [TaskType.TechDebt]: TaskLevel.Work,
+  [TaskType.Bug]: TaskLevel.Work,
+};
+
+export function getTaskLevel(type: string): TaskLevel {
+  return TYPE_TO_LEVEL[type] ?? TaskLevel.Work;
+}
+
+/** Types that belong to the work (level 2) execution layer. */
+export const WORK_TYPES: ReadonlySet<string> = new Set([
+  TaskType.Story,
+  TaskType.TechDebt,
+  TaskType.Bug,
+]);
 
 /** Types stored in the database. */
 export const DependencyType = {

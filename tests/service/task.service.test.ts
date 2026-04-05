@@ -273,7 +273,7 @@ describe('TaskService', () => {
   });
 
   it('breaks down a task into subtasks', () => {
-    const parent = container.taskService.createTask({ name: 'Parent' });
+    const parent = container.taskService.createTask({ name: 'Parent', type: 'epic' });
     if (!parent.ok) throw new Error('setup failed');
 
     const result = container.taskService.breakdownTask(parent.value.id, [
@@ -433,6 +433,336 @@ describe('TaskService', () => {
         afterId: t2.value.id,
       });
       expect(result.ok).toBe(true);
+    });
+  });
+
+  describe('epic type and level system', () => {
+    it('creates an epic task', () => {
+      const result = container.taskService.createTask({ name: 'My Epic', type: 'epic' });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.type).toBe('epic');
+      expect(result.value.parentId).toBeNull();
+    });
+
+    it('rejects epic with a parentId', () => {
+      const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' });
+      if (!epic.ok) throw new Error('setup failed');
+
+      const result = container.taskService.createTask({
+        name: 'Nested Epic',
+        type: 'epic',
+        parentId: epic.value.id,
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.code).toBe('VALIDATION');
+      expect(result.error.message).toContain('cannot have a parent');
+    });
+
+    it('allows level 2 task as child of epic', () => {
+      const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' });
+      if (!epic.ok) throw new Error('setup failed');
+
+      const story = container.taskService.createTask({
+        name: 'Story',
+        type: 'story',
+        parentId: epic.value.id,
+      });
+      expect(story.ok).toBe(true);
+      if (!story.ok) return;
+      expect(story.value.parentId).toBe(epic.value.id);
+    });
+
+    it('rejects level 2 task as child of another level 2 task', () => {
+      const story = container.taskService.createTask({ name: 'Parent Story', type: 'story' });
+      if (!story.ok) throw new Error('setup failed');
+
+      const result = container.taskService.createTask({
+        name: 'Child Story',
+        type: 'story',
+        parentId: story.value.id,
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.code).toBe('VALIDATION');
+      expect(result.error.message).toContain('epic-level');
+    });
+
+    it('rejects changing epic to story when it has children', () => {
+      const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' });
+      if (!epic.ok) throw new Error('setup failed');
+      container.taskService.createTask({
+        name: 'Child',
+        type: 'story',
+        parentId: epic.value.id,
+      });
+
+      const result = container.taskService.updateTask(epic.value.id, { type: 'story' });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.code).toBe('VALIDATION');
+      expect(result.error.message).toContain('has children');
+    });
+
+    it('allows changing epic to story when it has no children', () => {
+      const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' });
+      if (!epic.ok) throw new Error('setup failed');
+
+      const result = container.taskService.updateTask(epic.value.id, { type: 'story' });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.type).toBe('story');
+    });
+
+    it('rejects changing to epic when task has a parent', () => {
+      const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' });
+      if (!epic.ok) throw new Error('setup failed');
+      const story = container.taskService.createTask({
+        name: 'Story',
+        type: 'story',
+        parentId: epic.value.id,
+      });
+      if (!story.ok) throw new Error('setup failed');
+
+      const result = container.taskService.updateTask(story.value.id, { type: 'epic' });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.code).toBe('VALIDATION');
+      expect(result.error.message).toContain('has a parent');
+    });
+
+    it('ranks epics separately from stories', () => {
+      const e1 = container.taskService.createTask({ name: 'Epic 1', type: 'epic' });
+      const s1 = container.taskService.createTask({ name: 'Story 1', type: 'story' });
+      const e2 = container.taskService.createTask({ name: 'Epic 2', type: 'epic' });
+      const s2 = container.taskService.createTask({ name: 'Story 2', type: 'story' });
+      if (!e1.ok || !s1.ok || !e2.ok || !s2.ok) throw new Error('setup failed');
+
+      // Epics should be ranked independently of stories
+      expect(e1.value.rank).toBeLessThan(e2.value.rank);
+      expect(s1.value.rank).toBeLessThan(s2.value.rank);
+    });
+
+    it('lists tasks filtered by level', () => {
+      container.taskService.createTask({ name: 'Epic', type: 'epic' });
+      container.taskService.createTask({ name: 'Story', type: 'story' });
+      container.taskService.createTask({ name: 'Bug', type: 'bug' });
+
+      // Level 1 = epics only
+      const epics = container.taskService.listTasks({ level: 1 });
+      expect(epics.ok).toBe(true);
+      if (!epics.ok) return;
+      expect(epics.value).toHaveLength(1);
+      expect(epics.value[0]?.type).toBe('epic');
+
+      // Level 2 = stories, tech-debt, bugs
+      const work = container.taskService.listTasks({ level: 2 });
+      expect(work.ok).toBe(true);
+      if (!work.ok) return;
+      expect(work.value).toHaveLength(2);
+      expect(work.value.every((t) => t.type !== 'epic')).toBe(true);
+    });
+
+    it('lists tasks filtered by parentIds (multi-select)', () => {
+      const e1 = container.taskService.createTask({ name: 'Epic 1', type: 'epic' });
+      const e2 = container.taskService.createTask({ name: 'Epic 2', type: 'epic' });
+      if (!e1.ok || !e2.ok) throw new Error('setup failed');
+
+      container.taskService.createTask({ name: 'S1', parentId: e1.value.id });
+      container.taskService.createTask({ name: 'S2', parentId: e2.value.id });
+      container.taskService.createTask({ name: 'S3' }); // no parent
+
+      const result = container.taskService.listTasks({
+        parentIds: [e1.value.id, e2.value.id],
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value).toHaveLength(2);
+      expect(result.value.map((t) => t.name).sort()).toEqual(['S1', 'S2']);
+    });
+
+    it('breakdown rejects non-epic parent', () => {
+      const story = container.taskService.createTask({ name: 'Story', type: 'story' });
+      if (!story.ok) throw new Error('setup failed');
+
+      const result = container.taskService.breakdownTask(story.value.id, [
+        { name: 'Sub', type: 'story' },
+      ]);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toContain('epic-level');
+    });
+
+    it('breakdown rejects epic subtask', () => {
+      const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' });
+      if (!epic.ok) throw new Error('setup failed');
+
+      const result = container.taskService.breakdownTask(epic.value.id, [
+        { name: 'Sub Epic', type: 'epic' },
+      ]);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toContain('cannot be an epic');
+    });
+
+    it('breakdown succeeds with epic parent and work subtasks', () => {
+      const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' });
+      if (!epic.ok) throw new Error('setup failed');
+
+      const result = container.taskService.breakdownTask(epic.value.id, [
+        { name: 'Sub 1', type: 'story' },
+        { name: 'Sub 2', type: 'bug' },
+      ]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value).toHaveLength(2);
+      expect(result.value.every((t) => t.parentId === epic.value.id)).toBe(true);
+    });
+
+    it('rejects reranking epic with --after pointing to a story', () => {
+      const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' });
+      const story = container.taskService.createTask({ name: 'Story', type: 'story' });
+      if (!epic.ok || !story.ok) throw new Error('setup failed');
+
+      // story is not in the epic-level ranked list, so it won't be found
+      const result = container.taskService.rerankTask({
+        taskId: epic.value.id,
+        afterId: story.value.id,
+      });
+      expect(result.ok).toBe(false);
+    });
+
+    it('auto-reranks done epic to bottom of epic level', () => {
+      const e1 = container.taskService.createTask({ name: 'Epic 1', type: 'epic' });
+      const e2 = container.taskService.createTask({ name: 'Epic 2', type: 'epic' });
+      if (!e1.ok || !e2.ok) throw new Error('setup failed');
+
+      // Mark e1 as done
+      const result = container.taskService.updateTask(e1.value.id, { status: 'done' });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // e1 should now have a higher rank than e2 (moved to bottom)
+      expect(result.value.rank).toBeGreaterThan(e2.value.rank);
+    });
+
+    it('rejects setting parentId on epic via update', () => {
+      const e1 = container.taskService.createTask({ name: 'Epic 1', type: 'epic' });
+      const e2 = container.taskService.createTask({ name: 'Epic 2', type: 'epic' });
+      if (!e1.ok || !e2.ok) throw new Error('setup failed');
+
+      const result = container.taskService.updateTask(e1.value.id, {
+        parentId: e2.value.id,
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.message).toContain('cannot have a parent');
+    });
+
+    describe('auto-propagate parent status', () => {
+      it('moves epic to in-progress when first child starts', () => {
+        const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' });
+        if (!epic.ok) throw new Error('setup failed');
+        const s1 = container.taskService.createTask({
+          name: 'S1',
+          parentId: epic.value.id,
+        });
+        const s2 = container.taskService.createTask({
+          name: 'S2',
+          parentId: epic.value.id,
+        });
+        if (!s1.ok || !s2.ok) throw new Error('setup failed');
+
+        // Epic starts as backlog
+        expect(epic.value.status).toBe('backlog');
+
+        // Move first child to in-progress
+        container.taskService.updateTask(s1.value.id, { status: 'in-progress' });
+
+        const updated = container.taskService.getTask(epic.value.id);
+        expect(updated.ok).toBe(true);
+        if (!updated.ok) return;
+        expect(updated.value.status).toBe('in-progress');
+      });
+
+      it('does not demote epic when second child also starts', () => {
+        const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' });
+        if (!epic.ok) throw new Error('setup failed');
+        const s1 = container.taskService.createTask({
+          name: 'S1',
+          parentId: epic.value.id,
+        });
+        const s2 = container.taskService.createTask({
+          name: 'S2',
+          parentId: epic.value.id,
+        });
+        if (!s1.ok || !s2.ok) throw new Error('setup failed');
+
+        container.taskService.updateTask(s1.value.id, { status: 'in-progress' });
+        container.taskService.updateTask(s2.value.id, { status: 'in-progress' });
+
+        const updated = container.taskService.getTask(epic.value.id);
+        expect(updated.ok).toBe(true);
+        if (!updated.ok) return;
+        expect(updated.value.status).toBe('in-progress');
+      });
+
+      it('moves epic to done when all children are terminal', () => {
+        const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' });
+        if (!epic.ok) throw new Error('setup failed');
+        const s1 = container.taskService.createTask({
+          name: 'S1',
+          parentId: epic.value.id,
+        });
+        const s2 = container.taskService.createTask({
+          name: 'S2',
+          parentId: epic.value.id,
+        });
+        if (!s1.ok || !s2.ok) throw new Error('setup failed');
+
+        container.taskService.updateTask(s1.value.id, { status: 'done' });
+        // Epic should still not be done yet (s2 is still backlog)
+        let updated = container.taskService.getTask(epic.value.id);
+        expect(updated.ok).toBe(true);
+        if (!updated.ok) return;
+        expect(updated.value.status).not.toBe('done');
+
+        container.taskService.updateTask(s2.value.id, { status: 'cancelled' });
+        // Now all children are terminal → epic should be done
+        updated = container.taskService.getTask(epic.value.id);
+        expect(updated.ok).toBe(true);
+        if (!updated.ok) return;
+        expect(updated.value.status).toBe('done');
+      });
+
+      it('does not propagate for tasks without a parent', () => {
+        const s1 = container.taskService.createTask({ name: 'Orphan' });
+        if (!s1.ok) throw new Error('setup failed');
+        // Should not throw
+        const result = container.taskService.updateTask(s1.value.id, { status: 'in-progress' });
+        expect(result.ok).toBe(true);
+      });
+
+      it('moves epic from todo to in-progress on child start', () => {
+        const epic = container.taskService.createTask({
+          name: 'Epic',
+          type: 'epic',
+          status: 'todo',
+        });
+        if (!epic.ok) throw new Error('setup failed');
+        const s1 = container.taskService.createTask({
+          name: 'S1',
+          parentId: epic.value.id,
+        });
+        if (!s1.ok) throw new Error('setup failed');
+
+        container.taskService.updateTask(s1.value.id, { status: 'in-progress' });
+
+        const updated = container.taskService.getTask(epic.value.id);
+        expect(updated.ok).toBe(true);
+        if (!updated.ok) return;
+        expect(updated.value.status).toBe('in-progress');
+      });
     });
   });
 });
