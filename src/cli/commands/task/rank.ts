@@ -9,6 +9,8 @@ export function registerTaskRank(parent: Command, container: Container): void {
     .option('--after <taskId>', 'Place immediately after this task')
     .option('--before <taskId>', 'Place immediately before this task')
     .option('--position <n>', 'Place at 1-based position in backlog')
+    .option('--top', 'Move to the top of active tasks')
+    .option('--bottom', 'Move to the bottom of active tasks (above done tasks)')
     .option('-p, --project <project>', 'Project id or name')
     .action(
       (
@@ -17,6 +19,8 @@ export function registerTaskRank(parent: Command, container: Container): void {
           after?: string;
           before?: string;
           position?: string;
+          top?: boolean;
+          bottom?: boolean;
           project?: string;
         },
       ) => {
@@ -26,6 +30,8 @@ export function registerTaskRank(parent: Command, container: Container): void {
             afterId: opts.after,
             beforeId: opts.before,
             position: opts.position ? parseInt(opts.position, 10) : undefined,
+            top: opts.top,
+            bottom: opts.bottom,
           },
           opts.project,
         );

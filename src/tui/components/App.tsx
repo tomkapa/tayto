@@ -202,6 +202,40 @@ export function App({ container, initialProject }: Props) {
     loadEpics();
   }, [container, state.epics, state.epicSelectedIndex, loadEpics]);
 
+  const rerankSelectedToEdge = useCallback(
+    (kind: 'task' | 'epic', edge: 'top' | 'bottom') => {
+      const isEpic = kind === 'epic';
+      const item = isEpic ? state.epics[state.epicSelectedIndex] : state.tasks[state.selectedIndex];
+      if (!item) return;
+
+      const result = container.taskService.rerankTask({
+        taskId: item.id,
+        ...(edge === 'top' ? { top: true } : { bottom: true }),
+      });
+
+      dispatch({
+        type: isEpic ? 'EXIT_EPIC_REORDER' : 'EXIT_REORDER',
+        save: result.ok,
+      });
+      dispatch({
+        type: 'FLASH',
+        message: result.ok ? `${isEpic ? 'Epic moved' : 'Moved'} to ${edge}` : result.error.message,
+        level: result.ok ? 'info' : 'error',
+      });
+      if (isEpic) loadEpics();
+      else loadTasks();
+    },
+    [
+      container,
+      state.tasks,
+      state.selectedIndex,
+      state.epics,
+      state.epicSelectedIndex,
+      loadTasks,
+      loadEpics,
+    ],
+  );
+
   // Watch the SQLite file for external changes (e.g. CLI mutations) and
   // refetch all data so the TUI stays in sync.
   const refetchAll = useCallback(() => {
@@ -381,6 +415,14 @@ export function App({ container, initialProject }: Props) {
         dispatch({ type: 'EPIC_REORDER_MOVE', direction: 'down' });
         return;
       }
+      if (input === 't') {
+        rerankSelectedToEdge('epic', 'top');
+        return;
+      }
+      if (input === 'b') {
+        rerankSelectedToEdge('epic', 'bottom');
+        return;
+      }
       if (key.rightArrow) {
         saveEpicReorder();
         return;
@@ -401,6 +443,14 @@ export function App({ container, initialProject }: Props) {
       }
       if (key.downArrow || input === 'j') {
         dispatch({ type: 'REORDER_MOVE', direction: 'down' });
+        return;
+      }
+      if (input === 't') {
+        rerankSelectedToEdge('task', 'top');
+        return;
+      }
+      if (input === 'b') {
+        rerankSelectedToEdge('task', 'bottom');
         return;
       }
       if (key.rightArrow) {
@@ -471,7 +521,7 @@ export function App({ container, initialProject }: Props) {
           dispatch({ type: 'ENTER_EPIC_REORDER' });
           dispatch({
             type: 'FLASH',
-            message: 'Reorder: ↑↓ move, → save, ← cancel',
+            message: 'Reorder: ↑↓ move, t top, b bottom, → save, ← cancel',
             level: 'info',
           });
         }
@@ -599,7 +649,11 @@ export function App({ container, initialProject }: Props) {
         }
         if (state.tasks.length > 0) {
           dispatch({ type: 'ENTER_REORDER' });
-          dispatch({ type: 'FLASH', message: 'Reorder: ↑↓ move, → save, ← cancel', level: 'info' });
+          dispatch({
+            type: 'FLASH',
+            message: 'Reorder: ↑↓ move, t top, b bottom, → save, ← cancel',
+            level: 'info',
+          });
         }
         return;
       }

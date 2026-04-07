@@ -54,6 +54,10 @@ export const RerankTaskSchema = z.object({
   afterId: z.string().optional(),
   beforeId: z.string().optional(),
   position: z.number().int().min(1).optional(),
+  /** Move to the top of active tasks (highest priority). */
+  top: z.boolean().optional(),
+  /** Move to the bottom of active tasks, kept above terminal (done/cancelled) tasks. */
+  bottom: z.boolean().optional(),
 });
 export type RerankTaskInput = z.infer<typeof RerankTaskSchema>;
 

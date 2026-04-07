@@ -415,6 +415,54 @@ describe('TaskService', () => {
       expect(result.error.message).toContain('dependent');
     });
 
+    it('allows reranking above a terminal blocker (done tasks do not constrain)', () => {
+      // t1 blocks t2; when t1 is done, t2 should be freely rerankable
+      const t1 = container.taskService.createTask({ name: 'Blocker' });
+      const t2 = container.taskService.createTask({ name: 'Blocked' });
+      const t3 = container.taskService.createTask({ name: 'Other' });
+      if (!t1.ok || !t2.ok || !t3.ok) throw new Error('setup failed');
+
+      container.dependencyService.addDependency({
+        taskId: t2.value.id,
+        dependsOnId: t1.value.id,
+      });
+
+      // Complete t1 → moves to bottom
+      container.taskService.updateTask(t1.value.id, { status: 'done' });
+
+      // t2 should now be able to rank at position 1, even though
+      // its blocker t1 has a higher rank number (at the bottom)
+      const result = container.taskService.rerankTask({
+        taskId: t2.value.id,
+        position: 1,
+      });
+      expect(result.ok).toBe(true);
+    });
+
+    it('allows reranking below a terminal dependent (done tasks do not constrain)', () => {
+      // t2 depends on t1; when t2 is done, t1 should be freely rerankable
+      const t1 = container.taskService.createTask({ name: 'Blocker' });
+      const t2 = container.taskService.createTask({ name: 'Blocked' });
+      const t3 = container.taskService.createTask({ name: 'Other' });
+      if (!t1.ok || !t2.ok || !t3.ok) throw new Error('setup failed');
+
+      container.dependencyService.addDependency({
+        taskId: t2.value.id,
+        dependsOnId: t1.value.id,
+      });
+
+      // Complete t2 → moves to bottom
+      container.taskService.updateTask(t2.value.id, { status: 'done' });
+
+      // t1 should now be freely rerankable even though its dependent
+      // t2 is at the bottom with a higher rank number
+      const result = container.taskService.rerankTask({
+        taskId: t1.value.id,
+        position: 2,
+      });
+      expect(result.ok).toBe(true);
+    });
+
     it('allows reranking when dependency order is preserved', () => {
       const t1 = container.taskService.createTask({ name: 'Blocker' });
       const t2 = container.taskService.createTask({ name: 'Middle' });
@@ -464,6 +512,182 @@ describe('TaskService', () => {
         beforeId: t1.value.id,
       });
       expect(result.ok).toBe(true);
+    });
+
+    it('moves a task to the top with top:true', () => {
+      const t1 = container.taskService.createTask({ name: 'Task 1' });
+      const t2 = container.taskService.createTask({ name: 'Task 2' });
+      const t3 = container.taskService.createTask({ name: 'Task 3' });
+      if (!t1.ok || !t2.ok || !t3.ok) throw new Error('setup failed');
+
+      const result = container.taskService.rerankTask({
+        taskId: t3.value.id,
+        top: true,
+      });
+      expect(result.ok).toBe(true);
+
+      const list = container.taskService.listTasks({ status: 'backlog' });
+      if (!list.ok) throw new Error('list failed');
+      expect(list.value[0]?.name).toBe('Task 3');
+      expect(list.value[1]?.name).toBe('Task 1');
+      expect(list.value[2]?.name).toBe('Task 2');
+    });
+
+    it('moves a task to the bottom with bottom:true', () => {
+      const t1 = container.taskService.createTask({ name: 'Task 1' });
+      const t2 = container.taskService.createTask({ name: 'Task 2' });
+      const t3 = container.taskService.createTask({ name: 'Task 3' });
+      if (!t1.ok || !t2.ok || !t3.ok) throw new Error('setup failed');
+
+      const result = container.taskService.rerankTask({
+        taskId: t1.value.id,
+        bottom: true,
+      });
+      expect(result.ok).toBe(true);
+
+      const list = container.taskService.listTasks({ status: 'backlog' });
+      if (!list.ok) throw new Error('list failed');
+      expect(list.value[0]?.name).toBe('Task 2');
+      expect(list.value[1]?.name).toBe('Task 3');
+      expect(list.value[2]?.name).toBe('Task 1');
+    });
+
+    it('bottom:true keeps the task above terminal (done) tasks', () => {
+      // Reproduces the collision case: when a middle task is completed, its
+      // rank is pushed past the remaining active tasks. Moving an active task
+      // to "bottom" must still place it ABOVE the done task in the listing.
+      const t1 = container.taskService.createTask({ name: 'Task 1' });
+      const t2 = container.taskService.createTask({ name: 'Task 2' });
+      const t3 = container.taskService.createTask({ name: 'Task 3' });
+      if (!t1.ok || !t2.ok || !t3.ok) throw new Error('setup failed');
+
+      // Complete t2 — it gets a rank above all current tasks
+      const done = container.taskService.updateTask(t2.value.id, { status: 'done' });
+      expect(done.ok).toBe(true);
+
+      // Move t1 to the bottom of active tasks
+      const result = container.taskService.rerankTask({
+        taskId: t1.value.id,
+        bottom: true,
+      });
+      expect(result.ok).toBe(true);
+
+      // List ALL tasks ordered by rank — t1 must come after t3 (active)
+      // and BEFORE t2 (done), regardless of t2's elevated terminal rank.
+      const all = container.taskService.listTasks({});
+      if (!all.ok) throw new Error('list failed');
+      const order = all.value.map((t) => t.name);
+      const idxT1 = order.indexOf('Task 1');
+      const idxT2 = order.indexOf('Task 2');
+      const idxT3 = order.indexOf('Task 3');
+      expect(idxT3).toBeLessThan(idxT1);
+      expect(idxT1).toBeLessThan(idxT2);
+    });
+
+    it('top:true on an empty active list still succeeds for a single task', () => {
+      const t1 = container.taskService.createTask({ name: 'Solo' });
+      if (!t1.ok) throw new Error('setup failed');
+
+      const result = container.taskService.rerankTask({
+        taskId: t1.value.id,
+        top: true,
+      });
+      expect(result.ok).toBe(true);
+    });
+
+    it('rejects when both top and bottom are specified', () => {
+      const t1 = container.taskService.createTask({ name: 'Task 1' });
+      if (!t1.ok) throw new Error('setup failed');
+
+      const result = container.taskService.rerankTask({
+        taskId: t1.value.id,
+        top: true,
+        bottom: true,
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.code).toBe('VALIDATION');
+    });
+
+    it('top:true clamps under the blocker instead of failing', () => {
+      // t1 (blocker) → t2 (blocked) → t3 (other). Asking to move t3 to top
+      // should not error: it should land immediately after t1, above t2.
+      const t1 = container.taskService.createTask({ name: 'Blocker' });
+      const t2 = container.taskService.createTask({ name: 'Other' });
+      const t3 = container.taskService.createTask({ name: 'Blocked' });
+      if (!t1.ok || !t2.ok || !t3.ok) throw new Error('setup failed');
+
+      container.dependencyService.addDependency({
+        taskId: t3.value.id,
+        dependsOnId: t1.value.id,
+      });
+
+      const result = container.taskService.rerankTask({
+        taskId: t3.value.id,
+        top: true,
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // t3's new rank must be greater than t1's rank (blocker satisfied)
+      expect(result.value.rank).toBeGreaterThan(t1.value.rank);
+
+      // Verify the order: t1 (blocker) → t3 (clamped here) → t2
+      const list = container.taskService.listTasks({});
+      if (!list.ok) throw new Error('list failed');
+      const order = list.value.map((t) => t.name);
+      expect(order.indexOf('Blocker')).toBeLessThan(order.indexOf('Blocked'));
+      expect(order.indexOf('Blocked')).toBeLessThan(order.indexOf('Other'));
+    });
+
+    it('bottom:true clamps above the dependent instead of failing', () => {
+      // t1 → t2 → t3. t3 depends on t1 (so t1 has dependent t3).
+      // Asking to move t1 to bottom should clamp it to right before t3.
+      const t1 = container.taskService.createTask({ name: 'Has dependent' });
+      const t2 = container.taskService.createTask({ name: 'Other' });
+      const t3 = container.taskService.createTask({ name: 'Dependent' });
+      if (!t1.ok || !t2.ok || !t3.ok) throw new Error('setup failed');
+
+      container.dependencyService.addDependency({
+        taskId: t3.value.id,
+        dependsOnId: t1.value.id,
+      });
+
+      const result = container.taskService.rerankTask({
+        taskId: t1.value.id,
+        bottom: true,
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // t1's new rank must be less than t3's rank (dependent satisfied)
+      expect(result.value.rank).toBeLessThan(t3.value.rank);
+
+      // Verify the order: t2 → t1 (clamped here) → t3
+      const list = container.taskService.listTasks({});
+      if (!list.ok) throw new Error('list failed');
+      const order = list.value.map((t) => t.name);
+      expect(order.indexOf('Other')).toBeLessThan(order.indexOf('Has dependent'));
+      expect(order.indexOf('Has dependent')).toBeLessThan(order.indexOf('Dependent'));
+    });
+
+    it('--position 1 still rejects when blocked (only top/bottom clamp)', () => {
+      // The explicit --position path should preserve its strict behavior.
+      const t1 = container.taskService.createTask({ name: 'Blocker' });
+      const t2 = container.taskService.createTask({ name: 'Blocked' });
+      if (!t1.ok || !t2.ok) throw new Error('setup failed');
+
+      container.dependencyService.addDependency({
+        taskId: t2.value.id,
+        dependsOnId: t1.value.id,
+      });
+
+      const result = container.taskService.rerankTask({
+        taskId: t2.value.id,
+        position: 1,
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.code).toBe('VALIDATION');
+      expect(result.error.message).toContain('blocker');
     });
 
     it('rejects terminal task as anchor', () => {

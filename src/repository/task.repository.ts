@@ -415,7 +415,9 @@ export class SqliteTaskRepository implements TaskRepository {
       const types = this.getTypesForLevel(level);
       const typePlaceholders = types.map(() => '?').join(', ');
       const sql = `SELECT * FROM tasks WHERE project_id = ? AND ${NOT_DELETED} AND type IN (${typePlaceholders}) AND status NOT IN (${TERMINAL_PLACEHOLDERS}) ORDER BY rank ASC`;
-      const rows = this.db.prepare(sql).all(projectId, ...types, ...TERMINAL_STATUS_ARRAY) as TaskRow[];
+      const rows = this.db
+        .prepare(sql)
+        .all(projectId, ...types, ...TERMINAL_STATUS_ARRAY) as TaskRow[];
       return ok(rows.map(rowToTask));
     } catch (e) {
       return err(new AppError('DB_ERROR', 'Failed to get ranked non-terminal tasks by level', e));

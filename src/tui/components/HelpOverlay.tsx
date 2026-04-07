@@ -28,6 +28,8 @@ const SECTIONS = [
     keys: [
       ['←', 'Enter reorder'],
       ['↑↓', 'Move task'],
+      ['t', 'Jump to top'],
+      ['b', 'Jump to bottom'],
       ['→', 'Save position'],
       ['esc/←', 'Cancel'],
     ],
