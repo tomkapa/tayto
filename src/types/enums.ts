@@ -66,6 +66,18 @@ export type UIDependencyType = (typeof UIDependencyType)[keyof typeof UIDependen
 /** Gap between consecutive rank values, used for insertion between neighbors. */
 export const RANK_GAP = 1000.0;
 
+/**
+ * Collapse-safe midpoint between two rank values. Returns `null` when
+ * IEEE 754 double precision cannot represent a strictly-between value —
+ * callers use this as a signal to rebalance the rank grid and retry.
+ * Returning a number unconditionally would silently collide with an
+ * endpoint and corrupt the task ordering.
+ */
+export function midpoint(a: number, b: number): number | null {
+  const m = (a + b) / 2;
+  return m > a && m < b ? m : null;
+}
+
 /** Statuses that represent terminal/completed task states. */
 export const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   TaskStatus.Done,

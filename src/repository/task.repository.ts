@@ -3,7 +3,7 @@ import type { Result } from '../types/common.js';
 import { ok, err } from '../types/common.js';
 import type { Task, CreateTaskInput, UpdateTaskInput, TaskFilter } from '../types/task.js';
 import type { TaskLevel } from '../types/enums.js';
-import { RANK_GAP, TERMINAL_STATUSES, getTaskLevel, WORK_TYPES } from '../types/enums.js';
+import { RANK_GAP, TERMINAL_STATUSES, getTaskLevel, midpoint, WORK_TYPES } from '../types/enums.js';
 import { AppError } from '../errors/app-error.js';
 import { logger } from '../logging/logger.js';
 import { NOT_DELETED, type TaskRow, rowToTask } from './shared.js';
@@ -40,6 +40,13 @@ export interface TaskRepository {
   getRankedTasksByLevel(projectId: string, level: TaskLevel, status?: string): Result<Task[]>;
   /** Ranked non-terminal tasks filtered to the same level. */
   getRankedNonTerminalTasksByLevel(projectId: string, level: TaskLevel): Result<Task[]>;
+  /**
+   * Redistribute ranks at the given level so that every active task sits
+   * strictly below every terminal task, separated by clean `RANK_GAP`
+   * intervals. Recovers from floating-point precision collapse after many
+   * midpoint insertions and repairs any pre-existing interleaved state.
+   */
+  rebalanceByLevel(projectId: string, level: TaskLevel): Result<void>;
   /** FTS5 ranked search across all text fields */
   search(query: string, projectId?: string): Result<SearchResult[]>;
 }
@@ -54,22 +61,10 @@ export class SqliteTaskRepository implements TaskRepository {
         const level = getTaskLevel(input.type);
 
         // New tasks go after the last active task but before terminal (done/cancelled) tasks
-        // within the same level (epics rank among epics, work items among work items)
-        const maxActiveResult = this.getMaxActiveRankByLevel(input.projectId, level);
-        if (!maxActiveResult.ok) return maxActiveResult;
-        const maxActiveRank = maxActiveResult.value;
-
-        const minTerminalResult = this.getMinTerminalRankByLevel(input.projectId, level);
-        if (!minTerminalResult.ok) return minTerminalResult;
-        const minTerminalRank = minTerminalResult.value;
-
-        let rank: number;
-        if (minTerminalRank !== null && minTerminalRank > maxActiveRank) {
-          rank =
-            maxActiveRank > 0 ? (maxActiveRank + minTerminalRank) / 2 : minTerminalRank - RANK_GAP;
-        } else {
-          rank = maxActiveRank + RANK_GAP;
-        }
+        // within the same level (epics rank among epics, work items among work items).
+        const rankResult = this.computeInsertRank(input.projectId, level);
+        if (!rankResult.ok) return rankResult;
+        const rank = rankResult.value;
 
         this.db
           .prepare(
@@ -422,6 +417,130 @@ export class SqliteTaskRepository implements TaskRepository {
     } catch (e) {
       return err(new AppError('DB_ERROR', 'Failed to get ranked non-terminal tasks by level', e));
     }
+  }
+
+  rebalanceByLevel(projectId: string, level: TaskLevel): Result<void> {
+    return logger.startSpan('TaskRepository.rebalanceByLevel', () => {
+      try {
+        const types = this.getTypesForLevel(level);
+        const typePlaceholders = types.map(() => '?').join(', ');
+        // Active tasks first (current rank order), then terminal tasks —
+        // this both recovers from precision collapse and repairs any
+        // pre-existing interleaved state. Precondition: caller is not
+        // already inside a transaction.
+        const rows = this.db
+          .prepare(
+            `SELECT * FROM tasks
+             WHERE project_id = ? AND ${NOT_DELETED} AND type IN (${typePlaceholders})
+             ORDER BY
+               CASE WHEN status IN (${TERMINAL_PLACEHOLDERS}) THEN 1 ELSE 0 END ASC,
+               rank ASC,
+               id ASC`,
+          )
+          .all(projectId, ...types, ...TERMINAL_STATUS_ARRAY) as TaskRow[];
+
+        if (rows.length === 0) return ok(undefined);
+
+        const now = new Date().toISOString();
+        const updateStmt = this.db.prepare(
+          'UPDATE tasks SET rank = ?, updated_at = ? WHERE id = ?',
+        );
+
+        this.db.exec('BEGIN');
+        try {
+          for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row) continue;
+            const newRank = (i + 1) * RANK_GAP;
+            if (row.rank === newRank) continue;
+            updateStmt.run(newRank, now, row.id);
+          }
+          this.db.exec('COMMIT');
+        } catch (inner) {
+          this.db.exec('ROLLBACK');
+          throw inner;
+        }
+
+        return ok(undefined);
+      } catch (e) {
+        return err(new AppError('DB_ERROR', 'Failed to rebalance ranks by level', e));
+      }
+    });
+  }
+
+  /**
+   * Fetch `(maxActive, minTerminal)` for a level in a single SQL round-trip.
+   * Used by the insert hot path — faster than calling the two separate
+   * level accessors in sequence.
+   */
+  private getRankBoundsByLevel(
+    projectId: string,
+    level: TaskLevel,
+  ): Result<{ maxActive: number; minTerminal: number | null }> {
+    try {
+      const types = this.getTypesForLevel(level);
+      const typePlaceholders = types.map(() => '?').join(', ');
+      const row = this.db
+        .prepare(
+          `SELECT
+             MAX(CASE WHEN status NOT IN (${TERMINAL_PLACEHOLDERS}) THEN rank END) AS max_active,
+             MIN(CASE WHEN status IN (${TERMINAL_PLACEHOLDERS}) THEN rank END) AS min_terminal
+           FROM tasks
+           WHERE project_id = ? AND ${NOT_DELETED} AND type IN (${typePlaceholders})`,
+        )
+        .get(...TERMINAL_STATUS_ARRAY, ...TERMINAL_STATUS_ARRAY, projectId, ...types) as
+        | { max_active: number | null; min_terminal: number | null }
+        | undefined;
+      return ok({
+        maxActive: row?.max_active ?? 0,
+        minTerminal: row?.min_terminal ?? null,
+      });
+    } catch (e) {
+      return err(new AppError('DB_ERROR', 'Failed to get rank bounds by level', e));
+    }
+  }
+
+  /**
+   * Compute a fresh rank for a new active task at the given level.
+   *
+   * Wedges the new task between the last active task and the first terminal
+   * task. If the midpoint collapses against either endpoint, or if the
+   * level is already in a corrupt interleaved state (terminal rank ≤
+   * active rank), rebalance the level once and recompute.
+   */
+  private computeInsertRank(projectId: string, level: TaskLevel): Result<number> {
+    const attempt = (): Result<number | null> => {
+      const boundsResult = this.getRankBoundsByLevel(projectId, level);
+      if (!boundsResult.ok) return boundsResult;
+      const { maxActive, minTerminal } = boundsResult.value;
+
+      if (minTerminal === null) {
+        return ok(maxActive + RANK_GAP);
+      }
+      if (minTerminal <= maxActive) {
+        return ok(null);
+      }
+      // Anchor against the terminal when there are no prior active tasks
+      // (or the first active task happens to sit at rank 0).
+      if (maxActive <= 0) {
+        return ok(minTerminal - RANK_GAP);
+      }
+      return ok(midpoint(maxActive, minTerminal));
+    };
+
+    const first = attempt();
+    if (!first.ok) return first;
+    if (first.value !== null) return ok(first.value);
+
+    const rebalanceResult = this.rebalanceByLevel(projectId, level);
+    if (!rebalanceResult.ok) return rebalanceResult;
+
+    const second = attempt();
+    if (!second.ok) return second;
+    if (second.value === null) {
+      return err(new AppError('DB_ERROR', 'Rank computation did not converge after rebalance'));
+    }
+    return ok(second.value);
   }
 
   search(query: string, projectId?: string): Result<SearchResult[]> {

@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createContainer } from '../../src/cli/container.js';
 import { runMigrations } from '../../src/db/migrator.js';
 import type { Container } from '../../src/cli/container.js';
+import { isTerminalStatus } from '../../src/types/enums.js';
 
 let container: Container;
 
@@ -702,6 +703,135 @@ describe('TaskService', () => {
         afterId: t1.value.id,
       });
       expect(result.ok).toBe(false);
+    });
+  });
+
+  describe('rank precision and invariants', () => {
+    function assertRankInvariants(tasks: Array<{ rank: number; status: string }>): void {
+      // Ranks must be unique — collisions cause unstable ordering.
+      const ranks = tasks.map((t) => t.rank);
+      const unique = new Set(ranks);
+      expect(unique.size).toBe(ranks.length);
+
+      // Tasks (already sorted by rank) must partition into
+      // [active..., terminal...]. Once a terminal task appears, no active
+      // task may follow.
+      let seenTerminal = false;
+      for (const t of tasks) {
+        if (isTerminalStatus(t.status)) {
+          seenTerminal = true;
+        } else if (seenTerminal) {
+          throw new Error(
+            `Active task appeared after a terminal task (rank=${t.rank}, status=${t.status})`,
+          );
+        }
+      }
+    }
+
+    it('inserts many tasks between an active and a terminal without rank collisions', () => {
+      // Reproduces the production bug: repeated midpoint insertion between an
+      // anchor and a terminal task converges to the terminal rank due to
+      // IEEE 754 double precision (~52 bits of mantissa). After ~50 inserts
+      // the midpoint equals the terminal endpoint, producing duplicate ranks
+      // and subsequent inserts interleave with terminal tasks.
+      const anchor = container.taskService.createTask({ name: 'Anchor' });
+      const willBeDone = container.taskService.createTask({ name: 'Will be done' });
+      if (!anchor.ok || !willBeDone.ok) throw new Error('setup failed');
+
+      const doneResult = container.taskService.updateTask(willBeDone.value.id, {
+        status: 'done',
+      });
+      expect(doneResult.ok).toBe(true);
+
+      // Insert well past the double-precision subdivision limit (~52).
+      const N = 80;
+      for (let i = 0; i < N; i++) {
+        const r = container.taskService.createTask({ name: `Task ${i}` });
+        expect(r.ok).toBe(true);
+      }
+
+      const all = container.taskService.listTasks({});
+      if (!all.ok) throw new Error('list failed');
+      // Anchor + willBeDone + N new = N + 2
+      expect(all.value).toHaveLength(N + 2);
+      assertRankInvariants(all.value);
+    });
+
+    it('alternating create/complete cycles stay collision-free', () => {
+      // Repeatedly create a task and immediately mark the previous one done.
+      // Exercises both the create-insert path (wedging above terminals) and
+      // the complete-to-bottom path (rerank to max+GAP) at every iteration.
+      const N = 60;
+      let prevId: string | null = null;
+      for (let i = 0; i < N; i++) {
+        const created = container.taskService.createTask({ name: `T${i}` });
+        expect(created.ok).toBe(true);
+        if (!created.ok) throw new Error('create failed');
+        if (prevId) {
+          const upd = container.taskService.updateTask(prevId, { status: 'done' });
+          expect(upd.ok).toBe(true);
+        }
+        prevId = created.value.id;
+      }
+
+      const all = container.taskService.listTasks({});
+      if (!all.ok) throw new Error('list failed');
+      assertRankInvariants(all.value);
+    });
+
+    it('rerank via midpoint does not collapse with many subdivisions', () => {
+      // Exercises rerankTask's midpoint path. Create a new task and move it
+      // right after the first task each iteration — this halves the gap
+      // between task A and whatever previously sat right after it, so the
+      // midpoint converges toward A.rank and eventually hits the double
+      // precision wall.
+      const a = container.taskService.createTask({ name: 'A' });
+      const z = container.taskService.createTask({ name: 'Z' });
+      if (!a.ok || !z.ok) throw new Error('setup failed');
+
+      const N = 80;
+      for (let i = 0; i < N; i++) {
+        const created = container.taskService.createTask({ name: `T${i}` });
+        expect(created.ok).toBe(true);
+        if (!created.ok) throw new Error('create failed');
+        const r = container.taskService.rerankTask({
+          taskId: created.value.id,
+          afterId: a.value.id,
+        });
+        expect(r.ok).toBe(true);
+      }
+
+      const all = container.taskService.listTasks({});
+      if (!all.ok) throw new Error('list failed');
+      assertRankInvariants(all.value);
+      // A must be first, Z must be last.
+      expect(all.value[0]?.name).toBe('A');
+      expect(all.value[all.value.length - 1]?.name).toBe('Z');
+    });
+
+    it('scoping: epic rank-precision collapse does not touch work-item ranks', () => {
+      // The rebalance must be scoped by level: exhausting epic precision
+      // should not rewrite work-item ranks (and vice versa).
+      const story = container.taskService.createTask({ name: 'Story', type: 'story' });
+      if (!story.ok) throw new Error('setup failed');
+      const originalStoryRank = story.value.rank;
+
+      // Force an epic-level precision collapse.
+      const e1 = container.taskService.createTask({ name: 'E1', type: 'epic' });
+      const eDone = container.taskService.createTask({ name: 'EDone', type: 'epic' });
+      if (!e1.ok || !eDone.ok) throw new Error('setup failed');
+      container.taskService.updateTask(eDone.value.id, { status: 'done' });
+
+      for (let i = 0; i < 70; i++) {
+        const r = container.taskService.createTask({ name: `E${i + 2}`, type: 'epic' });
+        expect(r.ok).toBe(true);
+      }
+
+      const refetched = container.taskService.getTask(story.value.id);
+      expect(refetched.ok).toBe(true);
+      if (!refetched.ok) return;
+      // Story rank should be untouched by the epic-level rebalance.
+      expect(refetched.value.rank).toBe(originalStoryRank);
     });
   });
 

@@ -12,7 +12,14 @@ import type { ProjectService } from './project.service.js';
 import type { DependencyService } from './dependency.service.js';
 import { AppError } from '../errors/app-error.js';
 import { logger } from '../logging/logger.js';
-import { TaskStatus, TaskLevel, RANK_GAP, isTerminalStatus, getTaskLevel } from '../types/enums.js';
+import {
+  TaskStatus,
+  TaskLevel,
+  RANK_GAP,
+  isTerminalStatus,
+  getTaskLevel,
+  midpoint,
+} from '../types/enums.js';
 
 export interface TaskService {
   createTask(input: unknown, projectIdOrName?: string): Result<Task>;
@@ -333,16 +340,8 @@ export class TaskServiceImpl implements TaskService {
       if (!projectResult.ok) return projectResult;
       const projectId = projectResult.value.id;
 
-      // Get ranked non-terminal tasks at the same level (ranking applies within same level).
-      // Do NOT filter by a single status — anchors (--after/--before) may have any
-      // non-terminal status (backlog, todo, in-progress, review).
-      const rankedResult = this.repo.getRankedNonTerminalTasksByLevel(projectId, taskLevel);
-      if (!rankedResult.ok) return rankedResult;
-      const ranked = rankedResult.value.filter((t) => t.id !== taskId);
-
-      // Fetch dep constraints once — used for top/bottom clamping AND for
-      // the post-rank validation below. Filtering excludes terminal and
-      // cross-project tasks since neither participates in this rank space.
+      // Filtering excludes terminal and cross-project tasks — neither
+      // participates in this rank space, so they cannot constrain it.
       const depService = this.getDependencyService();
       const blockersResult = depService.listBlockers(taskId);
       if (!blockersResult.ok) return blockersResult;
@@ -355,55 +354,78 @@ export class TaskServiceImpl implements TaskService {
         (d) => !isTerminalStatus(d.status) && d.projectId === projectId,
       );
 
-      let newRank: number;
+      // Returns `ok(null)` to signal FP precision collapse — the caller
+      // rebalances once and retries on a fresh snapshot.
+      const attempt = (): Result<number | null> => {
+        const rankedResult = this.repo.getRankedNonTerminalTasksByLevel(projectId, taskLevel);
+        if (!rankedResult.ok) return rankedResult;
+        const ranked = rankedResult.value.filter((t) => t.id !== taskId);
 
-      if (top === true) {
-        newRank = this.computeTopRank(ranked, constrainingBlockers);
-      } else if (bottom === true) {
-        const r = this.computeBottomRank(projectId, taskLevel, ranked, constrainingDependents);
-        if (!r.ok) return r;
-        newRank = r.value;
-      } else if (afterId) {
-        const anchor = ranked.find((t) => t.id === afterId);
-        if (!anchor) {
-          return err(
-            new AppError('NOT_FOUND', `Anchor task not found among active tasks: ${afterId}`),
+        if (top === true) {
+          return ok(this.computeTopRank(ranked, constrainingBlockers));
+        }
+        if (bottom === true) {
+          const minTerminalResult = this.repo.getMinTerminalRankByLevel(projectId, taskLevel);
+          if (!minTerminalResult.ok) return minTerminalResult;
+          return ok(
+            this.computeBottomRank(ranked, minTerminalResult.value, constrainingDependents),
           );
         }
-        const anchorIndex = ranked.indexOf(anchor);
-        const next = ranked[anchorIndex + 1];
-        newRank = next ? (anchor.rank + next.rank) / 2 : anchor.rank + RANK_GAP;
-      } else if (beforeId) {
-        const anchor = ranked.find((t) => t.id === beforeId);
-        if (!anchor) {
-          return err(
-            new AppError('NOT_FOUND', `Anchor task not found among active tasks: ${beforeId}`),
-          );
+        if (afterId) {
+          const anchorIndex = ranked.findIndex((t) => t.id === afterId);
+          const anchor = ranked[anchorIndex];
+          if (!anchor) {
+            return err(
+              new AppError('NOT_FOUND', `Anchor task not found among active tasks: ${afterId}`),
+            );
+          }
+          const next = ranked[anchorIndex + 1];
+          return ok(next ? midpoint(anchor.rank, next.rank) : anchor.rank + RANK_GAP);
         }
-        const anchorIndex = ranked.indexOf(anchor);
-        const prev = ranked[anchorIndex - 1];
-        newRank = prev ? (prev.rank + anchor.rank) / 2 : anchor.rank - RANK_GAP;
-      } else {
-        // position is defined (guaranteed by specifiedCount === 1 check above)
+        if (beforeId) {
+          const anchorIndex = ranked.findIndex((t) => t.id === beforeId);
+          const anchor = ranked[anchorIndex];
+          if (!anchor) {
+            return err(
+              new AppError('NOT_FOUND', `Anchor task not found among active tasks: ${beforeId}`),
+            );
+          }
+          const prev = ranked[anchorIndex - 1];
+          return ok(prev ? midpoint(prev.rank, anchor.rank) : anchor.rank - RANK_GAP);
+        }
+        // position is defined — guaranteed by the specifiedCount === 1 check above.
         const pos = position as number;
         if (pos < 1) {
           return err(new AppError('VALIDATION', 'Position must be >= 1'));
         }
         if (pos === 1) {
-          newRank = this.computeTopRank(ranked);
-        } else if (pos > ranked.length) {
-          const r = this.computeBottomRank(projectId, taskLevel, ranked);
-          if (!r.ok) return r;
-          newRank = r.value;
-        } else {
-          const above = ranked[pos - 2];
-          const below = ranked[pos - 1];
-          if (!above || !below) {
-            return err(new AppError('DB_ERROR', 'Unexpected missing neighbor tasks'));
-          }
-          newRank = (above.rank + below.rank) / 2;
+          return ok(this.computeTopRank(ranked));
+        }
+        if (pos > ranked.length) {
+          const minTerminalResult = this.repo.getMinTerminalRankByLevel(projectId, taskLevel);
+          if (!minTerminalResult.ok) return minTerminalResult;
+          return ok(this.computeBottomRank(ranked, minTerminalResult.value));
+        }
+        const above = ranked[pos - 2];
+        const below = ranked[pos - 1];
+        if (!above || !below) {
+          return err(new AppError('DB_ERROR', 'Unexpected missing neighbor tasks'));
+        }
+        return ok(midpoint(above.rank, below.rank));
+      };
+
+      let computed = attempt();
+      if (!computed.ok) return computed;
+      if (computed.value === null) {
+        const rb = this.repo.rebalanceByLevel(projectId, taskLevel);
+        if (!rb.ok) return rb;
+        computed = attempt();
+        if (!computed.ok) return computed;
+        if (computed.value === null) {
+          return err(new AppError('DB_ERROR', 'Rank computation did not converge after rebalance'));
         }
       }
+      const newRank = computed.value;
 
       // Dependency constraint: a blocked task must not rank higher (lower number)
       // than any of its blockers, and must not rank lower than any of its dependents.
@@ -452,18 +474,19 @@ export class TaskServiceImpl implements TaskService {
   }
 
   /**
-   * Rank for placing a task at the top of the active list. When the task has
-   * blockers, clamp to "as close to the top as possible while still ranked
-   * after every blocker" — i.e. immediately after the highest-ranked blocker
-   * — instead of returning a value that would fail validation.
+   * Rank for placing a task at the top of the active list. Clamps to
+   * "immediately after the highest-ranked blocker" when blockers exist
+   * rather than returning a value that would fail validation.
+   *
+   * Returns `null` to signal FP precision collapse (caller rebalances).
    */
-  private computeTopRank(ranked: Task[], constrainingBlockers: Task[] = []): number {
+  private computeTopRank(ranked: Task[], constrainingBlockers: Task[] = []): number | null {
     if (constrainingBlockers.length > 0) {
       const highestBlocker = constrainingBlockers.reduce((a, b) => (a.rank > b.rank ? a : b));
       const idx = ranked.findIndex((t) => t.id === highestBlocker.id);
       if (idx >= 0) {
         const next = ranked[idx + 1];
-        return next ? (highestBlocker.rank + next.rank) / 2 : highestBlocker.rank + RANK_GAP;
+        return next ? midpoint(highestBlocker.rank, next.rank) : highestBlocker.rank + RANK_GAP;
       }
     }
     const first = ranked[0];
@@ -471,38 +494,33 @@ export class TaskServiceImpl implements TaskService {
   }
 
   /**
-   * Rank for placing a task at the bottom of the active list. Two constraints:
-   * 1. Stay above terminal tasks. Terminal tasks live at `getMaxRankByLevel +
-   *    RANK_GAP`, so a naive `last.rank + RANK_GAP` can collide with a
-   *    recently-completed task — use the midpoint between the last active
-   *    task and the smallest terminal rank instead.
-   * 2. Stay above any dependents. Clamp to "immediately before the
-   *    lowest-ranked dependent" rather than failing validation.
+   * Rank for placing a task at the bottom of the active list.
+   * - Stays above terminal tasks: terminal tasks live at `maxRank + RANK_GAP`
+   *   so a naive `last.rank + RANK_GAP` would collide with the most-recently
+   *   completed task.
+   * - Clamps above any dependents rather than failing validation.
+   *
+   * `minTerminal` is passed in so this helper stays pure (no DB access).
+   * Returns `null` to signal FP precision collapse.
    */
   private computeBottomRank(
-    projectId: string,
-    taskLevel: TaskLevel,
     ranked: Task[],
+    minTerminal: number | null,
     constrainingDependents: Task[] = [],
-  ): Result<number> {
+  ): number | null {
     if (constrainingDependents.length > 0) {
       const lowestDependent = constrainingDependents.reduce((a, b) => (a.rank < b.rank ? a : b));
       const idx = ranked.findIndex((t) => t.id === lowestDependent.id);
       if (idx >= 0) {
         const prev = ranked[idx - 1];
-        return ok(prev ? (prev.rank + lowestDependent.rank) / 2 : lowestDependent.rank - RANK_GAP);
+        return prev ? midpoint(prev.rank, lowestDependent.rank) : lowestDependent.rank - RANK_GAP;
       }
     }
     const last = ranked[ranked.length - 1];
-    if (!last) return ok(RANK_GAP);
-    const minTerminalResult = this.repo.getMinTerminalRankByLevel(projectId, taskLevel);
-    if (!minTerminalResult.ok) return minTerminalResult;
-    const minTerminal = minTerminalResult.value;
-    return ok(
-      minTerminal !== null && minTerminal > last.rank
-        ? (last.rank + minTerminal) / 2
-        : last.rank + RANK_GAP,
-    );
+    if (!last) return RANK_GAP;
+    return minTerminal !== null && minTerminal > last.rank
+      ? midpoint(last.rank, minTerminal)
+      : last.rank + RANK_GAP;
   }
 
   /**
