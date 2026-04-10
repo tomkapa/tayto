@@ -1,6 +1,6 @@
 {
   "name": "@tomkapa/tayto",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "CLI tool for task management - for solo devs and AI agents",
   "type": "module",
   "bin": {
@@ -20,6 +20,29 @@
   },
   "engines": {
     "node": ">=25"
+  },
+  "keywords": [
+    "cli",
+    "task-management",
+    "task-manager",
+    "ai",
+    "ai-agent",
+    "developer-tools",
+    "tui",
+    "sqlite",
+    "solo-dev",
+    "productivity"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tomkapa/tayto.git"
+  },
+  "homepage": "https://github.com/tomkapa/tayto#readme",
+  "bugs": {
+    "url": "https://github.com/tomkapa/tayto/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "license": "MIT",
   "dependencies": {
