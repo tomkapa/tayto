@@ -5,6 +5,9 @@ import { CreateProjectSchema, UpdateProjectSchema } from '../types/project.js';
 import type { ProjectRepository } from '../repository/project.repository.js';
 import { AppError } from '../errors/app-error.js';
 import { logger } from '../logging/logger.js';
+import { detectGitRemote as defaultDetectGitRemote } from '../utils/git.js';
+
+export type DetectGitRemoteFn = (cwd?: string) => Result<string | null>;
 
 export interface ProjectService {
   createProject(input: unknown): Result<Project>;
@@ -13,11 +16,17 @@ export interface ProjectService {
   updateProject(id: string, input: unknown): Result<Project>;
   deleteProject(id: string): Result<void>;
   resolveProject(idOrName?: string): Result<Project>;
+  resolveProjectWithGit(idOrName?: string, cwd?: string): Result<Project>;
+  linkGitRemote(idOrName: string, remote?: string): Result<Project>;
+  unlinkGitRemote(idOrName: string): Result<Project>;
   nextTaskId(project: Project): Result<string>;
 }
 
 export class ProjectServiceImpl implements ProjectService {
-  constructor(private readonly repo: ProjectRepository) {}
+  constructor(
+    private readonly repo: ProjectRepository,
+    private readonly detectRemote: DetectGitRemoteFn = defaultDetectGitRemote,
+  ) {}
 
   createProject(input: unknown): Result<Project> {
     return logger.startSpan('ProjectService.createProject', () => {
@@ -116,6 +125,70 @@ export class ProjectServiceImpl implements ProjectService {
           'No project specified and no default project set. Create a project first.',
         ),
       );
+    });
+  }
+
+  resolveProjectWithGit(idOrName?: string, cwd?: string): Result<Project> {
+    return logger.startSpan('ProjectService.resolveProjectWithGit', () => {
+      // Explicit project name always wins
+      if (idOrName) {
+        return this.resolveProject(idOrName);
+      }
+
+      // Try git remote detection
+      const remoteResult = this.detectRemote(cwd);
+      if (remoteResult.ok && remoteResult.value) {
+        const byRemote = this.repo.findByGitRemote(remoteResult.value);
+        if (!byRemote.ok) return byRemote;
+        if (byRemote.value) {
+          logger.info(
+            `resolveProjectWithGit: matched git remote to project key=${byRemote.value.key}`,
+          );
+          return ok(byRemote.value);
+        }
+      }
+
+      // Fall through to default project
+      return this.resolveProject();
+    });
+  }
+
+  linkGitRemote(idOrName: string, remote?: string): Result<Project> {
+    return logger.startSpan('ProjectService.linkGitRemote', () => {
+      const resolved = this.resolveProject(idOrName);
+      if (!resolved.ok) return resolved;
+
+      let url = remote;
+      if (!url) {
+        const detected = this.detectRemote();
+        if (!detected.ok) return detected;
+        if (!detected.value) {
+          return err(
+            new AppError(
+              'NOT_FOUND',
+              'No git remote detected in current directory. Use --remote <url> to specify one explicitly.',
+            ),
+          );
+        }
+        url = detected.value;
+      }
+
+      return this.repo.update(resolved.value.id, { gitRemote: url });
+    });
+  }
+
+  unlinkGitRemote(idOrName: string): Result<Project> {
+    return logger.startSpan('ProjectService.unlinkGitRemote', () => {
+      const resolved = this.resolveProject(idOrName);
+      if (!resolved.ok) return resolved;
+
+      if (!resolved.value.gitRemote) {
+        return err(
+          new AppError('NOT_FOUND', `Project "${resolved.value.name}" has no linked git remote.`),
+        );
+      }
+
+      return this.repo.update(resolved.value.id, { gitRemote: null });
     });
   }
 

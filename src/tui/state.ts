@@ -30,6 +30,7 @@ export const initialState: AppState = {
   epics: [],
   epicSelectedIndex: 0,
   selectedEpicIds: new Set(),
+  linkingProject: null,
   isEpicReordering: false,
   epicReorderSnapshot: null,
 };
@@ -55,6 +56,7 @@ export function appReducer(state: AppState, action: Action): AppState {
         confirmDelete: null,
         isSearchActive: false,
         formData: null,
+        linkingProject: null,
         focusedPanel: 'list',
       };
     }
@@ -295,5 +297,8 @@ export function appReducer(state: AppState, action: Action): AppState {
         epicReorderSnapshot: null,
       };
     }
+
+    case 'SET_LINKING_PROJECT':
+      return { ...state, linkingProject: action.project };
   }
 }

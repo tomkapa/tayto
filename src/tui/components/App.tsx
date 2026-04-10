@@ -21,6 +21,8 @@ import { TaskDetail } from './TaskDetail.js';
 import { TaskForm } from './TaskForm.js';
 import { ProjectSelector } from './ProjectSelector.js';
 import { ProjectForm } from './ProjectForm.js';
+import { ProjectLinkForm } from './ProjectLinkForm.js';
+import { detectGitRemote } from '../../utils/git.js';
 import { HelpOverlay } from './HelpOverlay.js';
 import { ConfirmDialog } from './ConfirmDialog.js';
 import { DependencyList } from './DependencyList.js';
@@ -251,11 +253,11 @@ export function App({ container, initialProject }: Props) {
     loadProjects();
   }, [loadProjects]);
 
-  // Resolve initial project
+  // Resolve initial project (git-aware: explicit flag → git remote match → default)
   useEffect(() => {
     if (state.projects.length > 0 && !state.activeProject) {
       logger.info(`TUI.resolveProject: resolving initialProject=${initialProject ?? '(default)'}`);
-      const result = container.projectService.resolveProject(initialProject);
+      const result = container.projectService.resolveProjectWithGit(initialProject);
       if (result.ok) {
         logger.info(
           `TUI.resolveProject: resolved to key=${result.value.key} name=${result.value.name}`,
@@ -327,6 +329,7 @@ export function App({ container, initialProject }: Props) {
       state.activeView === ViewType.TaskEdit ||
       state.activeView === ViewType.ProjectSelector ||
       state.activeView === ViewType.ProjectCreate ||
+      state.activeView === ViewType.ProjectLink ||
       state.activeView === ViewType.EpicPicker
     ) {
       return;
@@ -988,6 +991,62 @@ export function App({ container, initialProject }: Props) {
     dispatch({ type: 'GO_BACK' });
   }, []);
 
+  const handleProjectLink = useCallback((project: Project) => {
+    dispatch({ type: 'SET_LINKING_PROJECT', project });
+    dispatch({ type: 'NAVIGATE_TO', view: ViewType.ProjectLink });
+  }, []);
+
+  const handleLinkSave = useCallback(
+    (remote: string) => {
+      if (!state.linkingProject) return;
+      const result = container.projectService.linkGitRemote(state.linkingProject.id, remote);
+      if (result.ok) {
+        logger.info(
+          `TUI.linkGitRemote: linked project=${state.linkingProject.id} remote=${result.value.gitRemote}`,
+        );
+        dispatch({
+          type: 'FLASH',
+          message: `Linked to: ${result.value.gitRemote}`,
+          level: 'info',
+        });
+        dispatch({ type: 'GO_BACK' });
+        loadProjects();
+      } else {
+        logger.error('TUI.linkGitRemote: failed', result.error);
+        dispatch({ type: 'FLASH', message: result.error.message, level: 'error' });
+      }
+    },
+    [container, state.linkingProject, loadProjects],
+  );
+
+  const handleLinkUnlink = useCallback(() => {
+    if (!state.linkingProject) return;
+    const result = container.projectService.unlinkGitRemote(state.linkingProject.id);
+    if (result.ok) {
+      logger.info(`TUI.unlinkGitRemote: unlinked project=${state.linkingProject.id}`);
+      dispatch({ type: 'FLASH', message: 'Git remote unlinked', level: 'info' });
+      dispatch({ type: 'GO_BACK' });
+      loadProjects();
+    } else {
+      logger.error('TUI.unlinkGitRemote: failed', result.error);
+      dispatch({ type: 'FLASH', message: result.error.message, level: 'error' });
+    }
+  }, [container, state.linkingProject, loadProjects]);
+
+  const handleLinkDetect = useCallback((): string | null => {
+    const result = detectGitRemote();
+    if (result.ok && result.value) {
+      dispatch({ type: 'FLASH', message: `Detected: ${result.value}`, level: 'info' });
+      return result.value;
+    }
+    dispatch({ type: 'FLASH', message: 'No git remote detected in cwd', level: 'warn' });
+    return null;
+  }, []);
+
+  const handleLinkCancel = useCallback(() => {
+    dispatch({ type: 'GO_BACK' });
+  }, []);
+
   const handleProjectCancel = useCallback(() => {
     dispatch({ type: 'GO_BACK' });
   }, []);
@@ -1154,6 +1213,7 @@ export function App({ container, initialProject }: Props) {
             onSelect={handleProjectSelect}
             onCreate={handleProjectCreate}
             onSetDefault={handleSetDefault}
+            onLink={handleProjectLink}
             onCancel={handleProjectCancel}
           />
         )}
@@ -1161,6 +1221,18 @@ export function App({ container, initialProject }: Props) {
         {!state.confirmDelete && state.activeView === ViewType.ProjectCreate && (
           <ProjectForm onSave={handleProjectFormSave} onCancel={handleProjectFormCancel} />
         )}
+
+        {!state.confirmDelete &&
+          state.activeView === ViewType.ProjectLink &&
+          state.linkingProject && (
+            <ProjectLinkForm
+              project={state.linkingProject}
+              onSave={handleLinkSave}
+              onUnlink={handleLinkUnlink}
+              onDetect={handleLinkDetect}
+              onCancel={handleLinkCancel}
+            />
+          )}
 
         {!state.confirmDelete && state.activeView === ViewType.Help && <HelpOverlay />}
       </Box>

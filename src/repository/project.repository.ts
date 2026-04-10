@@ -14,6 +14,7 @@ interface ProjectRow {
   description: string;
   is_default: number;
   task_counter: number;
+  git_remote: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -25,6 +26,7 @@ function rowToProject(row: ProjectRow): Project {
     name: row.name,
     description: row.description,
     isDefault: row.is_default === 1,
+    gitRemote: row.git_remote,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -35,6 +37,7 @@ export interface ProjectRepository {
   findById(id: string): Result<Project | null>;
   findByKey(key: string): Result<Project | null>;
   findByName(name: string): Result<Project | null>;
+  findByGitRemote(remote: string): Result<Project | null>;
   findDefault(): Result<Project | null>;
   findAll(): Result<Project[]>;
   update(id: string, input: UpdateProjectInput): Result<Project>;
@@ -57,8 +60,8 @@ export class SqliteProjectRepository implements ProjectRepository {
 
         this.db
           .prepare(
-            `INSERT INTO projects (id, key, name, description, is_default, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO projects (id, key, name, description, is_default, git_remote, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             id,
@@ -66,6 +69,7 @@ export class SqliteProjectRepository implements ProjectRepository {
             input.name,
             input.description ?? '',
             input.isDefault ? 1 : 0,
+            input.gitRemote ?? null,
             now,
             now,
           );
@@ -79,6 +83,15 @@ export class SqliteProjectRepository implements ProjectRepository {
         return ok(rowToProject(row));
       } catch (e) {
         if (e instanceof Error && e.message.includes('UNIQUE constraint')) {
+          if (e.message.includes('git_remote')) {
+            return err(
+              new AppError(
+                'DUPLICATE',
+                `Git remote already linked to another project: ${input.gitRemote}`,
+                e,
+              ),
+            );
+          }
           return err(new AppError('DUPLICATE', `Project name already exists: ${input.name}`, e));
         }
         return err(new AppError('DB_ERROR', 'Failed to insert project', e));
@@ -116,6 +129,17 @@ export class SqliteProjectRepository implements ProjectRepository {
       return ok(row ? rowToProject(row) : null);
     } catch (e) {
       return err(new AppError('DB_ERROR', 'Failed to find project by name', e));
+    }
+  }
+
+  findByGitRemote(remote: string): Result<Project | null> {
+    try {
+      const row = this.db
+        .prepare(`SELECT * FROM projects WHERE git_remote = ? AND ${NOT_DELETED}`)
+        .get(remote) as ProjectRow | undefined;
+      return ok(row ? rowToProject(row) : null);
+    } catch (e) {
+      return err(new AppError('DB_ERROR', 'Failed to find project by git remote', e));
     }
   }
 
@@ -160,13 +184,14 @@ export class SqliteProjectRepository implements ProjectRepository {
         this.db
           .prepare(
             `UPDATE projects SET
-               name = ?, description = ?, is_default = ?, updated_at = ?
+               name = ?, description = ?, is_default = ?, git_remote = ?, updated_at = ?
              WHERE id = ?`,
           )
           .run(
             input.name ?? existing.name,
             input.description ?? existing.description,
             input.isDefault !== undefined ? (input.isDefault ? 1 : 0) : existing.is_default,
+            input.gitRemote !== undefined ? input.gitRemote : existing.git_remote,
             now,
             id,
           );
@@ -180,6 +205,11 @@ export class SqliteProjectRepository implements ProjectRepository {
         return ok(rowToProject(row));
       } catch (e) {
         if (e instanceof Error && e.message.includes('UNIQUE constraint')) {
+          if (e.message.includes('git_remote')) {
+            return err(
+              new AppError('DUPLICATE', `Git remote already linked to another project`, e),
+            );
+          }
           return err(new AppError('DUPLICATE', `Project name already exists`, e));
         }
         return err(new AppError('DB_ERROR', 'Failed to update project', e));

@@ -5,6 +5,8 @@ import { registerProjectList } from './commands/project/list.js';
 import { registerProjectUpdate } from './commands/project/update.js';
 import { registerProjectDelete } from './commands/project/delete.js';
 import { registerProjectSetDefault } from './commands/project/set-default.js';
+import { registerProjectLink } from './commands/project/link.js';
+import { registerProjectUnlink } from './commands/project/unlink.js';
 import { registerTaskCreate } from './commands/task/create.js';
 import { registerTaskList } from './commands/task/list.js';
 import { registerTaskShow } from './commands/task/show.js';
@@ -33,6 +35,8 @@ export function buildCLI(container: Container): Command {
   registerProjectUpdate(project, container);
   registerProjectDelete(project, container);
   registerProjectSetDefault(project, container);
+  registerProjectLink(project, container);
+  registerProjectUnlink(project, container);
 
   const task = program.command('task').description('Manage tasks');
   registerTaskCreate(task, container);

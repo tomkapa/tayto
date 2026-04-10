@@ -19,7 +19,7 @@ async function main(): Promise<void> {
 
   const args = process.argv.slice(2);
   if (args.length === 0) {
-    // Default: launch TUI when no subcommand
+    // Default: launch TUI when no subcommand (git-aware project resolution happens in App.tsx)
     const { launchTUI } = await import('./tui/index.js');
     await launchTUI(container);
   } else {

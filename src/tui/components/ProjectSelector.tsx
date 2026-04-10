@@ -9,6 +9,7 @@ interface Props {
   onSelect: (project: Project) => void;
   onCreate: () => void;
   onSetDefault: (project: Project) => void;
+  onLink: (project: Project) => void;
   onCancel: () => void;
 }
 
@@ -18,6 +19,7 @@ export function ProjectSelector({
   onSelect,
   onCreate,
   onSetDefault,
+  onLink,
   onCancel,
 }: Props) {
   const [selectedIndex, setSelectedIndex] = useState(() => {
@@ -49,6 +51,13 @@ export function ProjectSelector({
       }
       return;
     }
+    if (input === 'l') {
+      const project = projects[selectedIndex];
+      if (project) {
+        onLink(project);
+      }
+      return;
+    }
     if (key.upArrow || input === 'k') {
       setSelectedIndex((i) => Math.max(0, i - 1));
     }
@@ -76,6 +85,9 @@ export function ProjectSelector({
           {'  NAME'.padEnd(30)}
         </Text>
         <Text color={theme.table.headerFg} bold>
+          {'GIT REMOTE'.padEnd(40)}
+        </Text>
+        <Text color={theme.table.headerFg} bold>
           DESCRIPTION
         </Text>
       </Box>
@@ -93,11 +105,14 @@ export function ProjectSelector({
           const defaultMarker = project.isDefault ? 'D' : ' ';
           const marker = `${activeMarker}${defaultMarker}`;
 
+          const remoteDisplay = (project.gitRemote ?? '').slice(0, 38).padEnd(40);
+
           if (isSelected) {
             return (
               <Box key={project.id} paddingX={1}>
                 <Text backgroundColor={theme.table.cursorBg} color={theme.table.cursorFg} bold>
                   {marker} {project.name.padEnd(27)}
+                  {remoteDisplay}
                   {project.description}
                 </Text>
               </Box>
@@ -109,6 +124,7 @@ export function ProjectSelector({
               <Text color={isActive ? theme.status.modified : theme.table.fg}>
                 {marker} {project.name.padEnd(27)}
               </Text>
+              <Text dimColor>{remoteDisplay}</Text>
               <Text dimColor>{project.description}</Text>
             </Box>
           );
@@ -118,7 +134,7 @@ export function ProjectSelector({
       <Box flexGrow={1} />
 
       <Box paddingX={1}>
-        <Text dimColor>enter: select | d: set default | c: create | esc: back</Text>
+        <Text dimColor>enter: select | d: set default | l: link git | c: create | esc: back</Text>
       </Box>
     </Box>
   );

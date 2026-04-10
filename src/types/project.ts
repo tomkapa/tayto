@@ -11,6 +11,7 @@ export const CreateProjectSchema = z.object({
     .optional(),
   description: z.string().max(5000).optional(),
   isDefault: z.boolean().optional(),
+  gitRemote: z.string().min(1, 'Git remote URL must not be empty').nullable().optional(),
 });
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
 
@@ -18,6 +19,7 @@ export const UpdateProjectSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().max(5000).optional(),
   isDefault: z.boolean().optional(),
+  gitRemote: z.string().min(1, 'Git remote URL must not be empty').nullable().optional(),
 });
 export type UpdateProjectInput = z.infer<typeof UpdateProjectSchema>;
 
@@ -27,6 +29,7 @@ export interface Project {
   name: string;
   description: string;
   isDefault: boolean;
+  gitRemote: string | null;
   createdAt: string;
   updatedAt: string;
 }

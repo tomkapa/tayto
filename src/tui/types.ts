@@ -11,6 +11,7 @@ export const ViewType = {
   ProjectCreate: 'project-create',
   DependencyList: 'dependency-list',
   EpicPicker: 'epic-picker',
+  ProjectLink: 'project-link',
   Help: 'help',
 } as const;
 export type ViewType = (typeof ViewType)[keyof typeof ViewType];
@@ -51,6 +52,8 @@ export interface AppState {
   selectedEpicIds: Set<string>;
   /** Scroll offset for detail panel (lines from top). */
   detailScrollOffset: number;
+  /** Project currently being linked to a git remote. */
+  linkingProject: Project | null;
   /** True when reordering epics. */
   isEpicReordering: boolean;
   /** Snapshot of epics before reorder started (for cancel/revert). */
@@ -101,4 +104,5 @@ export type Action =
   | { type: 'DETAIL_RESET_SCROLL' }
   | { type: 'ENTER_EPIC_REORDER' }
   | { type: 'EPIC_REORDER_MOVE'; direction: 'up' | 'down' }
-  | { type: 'EXIT_EPIC_REORDER'; save: boolean };
+  | { type: 'EXIT_EPIC_REORDER'; save: boolean }
+  | { type: 'SET_LINKING_PROJECT'; project: Project | null };

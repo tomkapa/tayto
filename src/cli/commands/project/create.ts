@@ -9,17 +9,27 @@ export function registerProjectCreate(parent: Command, container: Container): vo
     .requiredOption('-n, --name <name>', 'Project name')
     .option(
       '-k, --key <key>',
-      'Project key (2-10 alphanumeric chars, defaults to first 3 chars of name)',
+      'Project key (2-7 uppercase alphanumeric chars, defaults to first 3 chars of name)',
     )
     .option('-d, --description <description>', 'Project description')
     .option('--default', 'Set as default project')
-    .action((opts: { name: string; key?: string; description?: string; default?: boolean }) => {
-      const result = container.projectService.createProject({
-        name: opts.name,
-        key: opts.key,
-        description: opts.description,
-        isDefault: opts.default,
-      });
-      handleResult(result);
-    });
+    .option('--git-remote <url>', 'Git remote URL to associate with the project')
+    .action(
+      (opts: {
+        name: string;
+        key?: string;
+        description?: string;
+        default?: boolean;
+        gitRemote?: string;
+      }) => {
+        const result = container.projectService.createProject({
+          name: opts.name,
+          key: opts.key,
+          description: opts.description,
+          isDefault: opts.default,
+          gitRemote: opts.gitRemote,
+        });
+        handleResult(result);
+      },
+    );
 }
