@@ -29,7 +29,7 @@ npm install -g @tomkapa/tayto
 
 ## Demo
 
-<video src="https://github.com/user-attachments/assets/bfd9e515-4ca6-4bd8-9bc3-d1b94eebf869" controls width="100%"></video>
+![Demo](https://raw.githubusercontent.com/tomkapa/taskcli/main/demo.gif)
 
 ---
 
