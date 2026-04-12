@@ -9,6 +9,7 @@ export const ViewType = {
   TaskEdit: 'task-edit',
   ProjectSelector: 'project-selector',
   ProjectCreate: 'project-create',
+  ProjectEdit: 'project-edit',
   DependencyList: 'dependency-list',
   EpicPicker: 'epic-picker',
   ProjectLink: 'project-link',
@@ -54,6 +55,8 @@ export interface AppState {
   detailScrollOffset: number;
   /** Project currently being linked to a git remote. */
   linkingProject: Project | null;
+  /** Project currently being edited. */
+  editingProject: Project | null;
   /** True when reordering epics. */
   isEpicReordering: boolean;
   /** Snapshot of epics before reorder started (for cancel/revert). */
@@ -105,4 +108,5 @@ export type Action =
   | { type: 'ENTER_EPIC_REORDER' }
   | { type: 'EPIC_REORDER_MOVE'; direction: 'up' | 'down' }
   | { type: 'EXIT_EPIC_REORDER'; save: boolean }
-  | { type: 'SET_LINKING_PROJECT'; project: Project | null };
+  | { type: 'SET_LINKING_PROJECT'; project: Project | null }
+  | { type: 'SET_EDITING_PROJECT'; project: Project | null };

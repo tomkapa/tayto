@@ -8,6 +8,7 @@ interface Props {
   activeProject: Project | null;
   onSelect: (project: Project) => void;
   onCreate: () => void;
+  onEdit: (project: Project) => void;
   onSetDefault: (project: Project) => void;
   onLink: (project: Project) => void;
   onCancel: () => void;
@@ -18,6 +19,7 @@ export function ProjectSelector({
   activeProject,
   onSelect,
   onCreate,
+  onEdit,
   onSetDefault,
   onLink,
   onCancel,
@@ -42,6 +44,13 @@ export function ProjectSelector({
     }
     if (input === 'c') {
       onCreate();
+      return;
+    }
+    if (input === 'e') {
+      const project = projects[selectedIndex];
+      if (project) {
+        onEdit(project);
+      }
       return;
     }
     if (input === 'd') {
@@ -134,7 +143,9 @@ export function ProjectSelector({
       <Box flexGrow={1} />
 
       <Box paddingX={1}>
-        <Text dimColor>enter: select | d: set default | l: link git | c: create | esc: back</Text>
+        <Text dimColor>
+          enter: select | e: edit | d: set default | l: link git | c: create | esc: back
+        </Text>
       </Box>
     </Box>
   );

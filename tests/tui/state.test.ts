@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { appReducer, initialState } from '../../src/tui/state.js';
 import { ViewType } from '../../src/tui/types.js';
 import type { Task } from '../../src/types/task.js';
+import type { Project } from '../../src/types/project.js';
 
 const mockTask: Task = {
   id: 'task-1',
@@ -695,6 +696,46 @@ describe('appReducer', () => {
       });
       state = appReducer(state, { type: 'GO_BACK' });
       expect(state.activeView).toBe(ViewType.TaskList);
+    });
+  });
+
+  describe('SET_EDITING_PROJECT', () => {
+    const mockProject: Project = {
+      id: 'proj-1',
+      key: 'MYA',
+      name: 'My App',
+      description: 'Main application',
+      isDefault: true,
+      gitRemote: null,
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    it('sets editingProject', () => {
+      const state = appReducer(initialState, {
+        type: 'SET_EDITING_PROJECT',
+        project: mockProject,
+      });
+      expect(state.editingProject).toEqual(mockProject);
+    });
+
+    it('clears editingProject when set to null', () => {
+      let state = appReducer(initialState, {
+        type: 'SET_EDITING_PROJECT',
+        project: mockProject,
+      });
+      state = appReducer(state, { type: 'SET_EDITING_PROJECT', project: null });
+      expect(state.editingProject).toBeNull();
+    });
+
+    it('GO_BACK clears editingProject', () => {
+      let state = appReducer(initialState, {
+        type: 'SET_EDITING_PROJECT',
+        project: mockProject,
+      });
+      state = appReducer(state, { type: 'NAVIGATE_TO', view: ViewType.ProjectEdit });
+      state = appReducer(state, { type: 'GO_BACK' });
+      expect(state.editingProject).toBeNull();
     });
   });
 });

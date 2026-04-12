@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
+import type { Project } from '../../types/project.js';
 import { theme } from '../theme.js';
 
 interface Props {
+  editingProject?: Project | null;
   onSave: (data: {
     name: string;
     key: string;
@@ -29,14 +31,26 @@ const FIELDS: Field[] = [
   { label: 'Default', key: 'isDefault', type: 'toggle' },
 ];
 
-export function ProjectForm({ onSave, onCancel }: Props) {
+export function ProjectForm({ editingProject, onSave, onCancel }: Props) {
+  const isEditing = !!editingProject;
   const [focusIndex, setFocusIndex] = useState(0);
-  const [values, setValues] = useState<Record<string, string>>({
-    name: '',
-    key: '',
-    description: '',
-    gitRemote: '',
-    isDefault: 'no',
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    if (editingProject) {
+      return {
+        name: editingProject.name,
+        key: editingProject.key,
+        description: editingProject.description,
+        gitRemote: editingProject.gitRemote ?? '',
+        isDefault: editingProject.isDefault ? 'yes' : 'no',
+      };
+    }
+    return {
+      name: '',
+      key: '',
+      description: '',
+      gitRemote: '',
+      isDefault: 'no',
+    };
   });
   const [cursorPos, setCursorPos] = useState(0);
   const cursorRef = useRef(cursorPos);
@@ -93,7 +107,10 @@ export function ProjectForm({ onSave, onCancel }: Props) {
       return;
     }
 
-    if (currentField.type === 'inline') {
+    // Key is immutable when editing
+    const isReadOnly = isEditing && currentField.key === 'key';
+
+    if (currentField.type === 'inline' && !isReadOnly) {
       if (key.leftArrow) {
         setCursorPos((p) => Math.max(0, p - 1));
       } else if (key.rightArrow) {
@@ -136,7 +153,7 @@ export function ProjectForm({ onSave, onCancel }: Props) {
       <Box gap={0}>
         <Text color={theme.title} bold>
           {' '}
-          new project
+          {isEditing ? 'edit project' : 'new project'}
         </Text>
       </Box>
 
@@ -162,8 +179,11 @@ export function ProjectForm({ onSave, onCancel }: Props) {
                   ) : (
                     value
                   )}
-                  {field.key === 'key' && !value && (
+                  {field.key === 'key' && !value && !isEditing && (
                     <Text dimColor>{isFocused ? ' (auto from name)' : ''}</Text>
+                  )}
+                  {field.key === 'key' && isEditing && isFocused && (
+                    <Text dimColor> (read-only)</Text>
                   )}
                 </Text>
               )}

@@ -119,6 +119,7 @@ function getKeyHints(state: AppState): KeyHint[] {
     return [
       { key: 'j/k', desc: 'nav' },
       { key: 'enter', desc: 'select' },
+      { key: 'e', desc: 'edit' },
       { key: 'c', desc: 'create' },
       { key: 'l', desc: 'link' },
       { key: 'd', desc: 'default' },

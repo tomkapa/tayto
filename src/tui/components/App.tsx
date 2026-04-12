@@ -337,6 +337,7 @@ export function App({ container, initialProject, latestVersion }: Props) {
       state.activeView === ViewType.TaskEdit ||
       state.activeView === ViewType.ProjectSelector ||
       state.activeView === ViewType.ProjectCreate ||
+      state.activeView === ViewType.ProjectEdit ||
       state.activeView === ViewType.ProjectLink ||
       state.activeView === ViewType.EpicPicker
     ) {
@@ -969,6 +970,11 @@ export function App({ container, initialProject, latestVersion }: Props) {
     dispatch({ type: 'NAVIGATE_TO', view: ViewType.ProjectCreate });
   }, []);
 
+  const handleProjectEdit = useCallback((project: Project) => {
+    dispatch({ type: 'SET_EDITING_PROJECT', project });
+    dispatch({ type: 'NAVIGATE_TO', view: ViewType.ProjectEdit });
+  }, []);
+
   const handleProjectFormSave = useCallback(
     (data: {
       name: string;
@@ -977,31 +983,49 @@ export function App({ container, initialProject, latestVersion }: Props) {
       isDefault: boolean;
       gitRemote: string;
     }) => {
-      const result = container.projectService.createProject({
-        name: data.name,
-        key: data.key || undefined,
-        description: data.description || undefined,
-        isDefault: data.isDefault,
-        gitRemote: data.gitRemote || undefined,
-      });
+      const editing = state.activeView === ViewType.ProjectEdit ? state.editingProject : null;
+      const result = editing
+        ? container.projectService.updateProject(editing.id, {
+            name: data.name,
+            description: data.description,
+            isDefault: data.isDefault,
+            gitRemote: data.gitRemote || null,
+          })
+        : container.projectService.createProject({
+            name: data.name,
+            key: data.key || undefined,
+            description: data.description || undefined,
+            isDefault: data.isDefault,
+            gitRemote: data.gitRemote || undefined,
+          });
+
       if (result.ok) {
-        logger.info(`TUI.createProject: created key=${result.value.key} name=${result.value.name}`);
+        const verb = editing ? 'updated' : 'created';
+        logger.info(
+          `TUI.${editing ? 'editProject' : 'createProject'}: ${verb} key=${result.value.key} name=${result.value.name}`,
+        );
         dispatch({
           type: 'FLASH',
-          message: `Project created: ${result.value.name}`,
+          message: `Project ${verb}: ${result.value.name}`,
           level: 'info',
         });
-        dispatch({ type: 'SET_ACTIVE_PROJECT', project: result.value });
-        // Go back past ProjectCreate and ProjectSelector to TaskList
-        dispatch({ type: 'GO_BACK' });
+
+        if (editing && state.activeProject?.id === result.value.id) {
+          dispatch({ type: 'SET_ACTIVE_PROJECT', project: result.value });
+        }
+        if (!editing) {
+          dispatch({ type: 'SET_ACTIVE_PROJECT', project: result.value });
+          // Go back past ProjectCreate and ProjectSelector to TaskList
+          dispatch({ type: 'GO_BACK' });
+        }
         dispatch({ type: 'GO_BACK' });
         loadProjects();
       } else {
-        logger.error('TUI.createProject: failed', result.error);
+        logger.error(`TUI.${editing ? 'editProject' : 'createProject'}: failed`, result.error);
         dispatch({ type: 'FLASH', message: result.error.message, level: 'error' });
       }
     },
-    [container, loadProjects],
+    [container, state.activeView, state.editingProject, state.activeProject, loadProjects],
   );
 
   const handleProjectFormCancel = useCallback(() => {
@@ -1229,6 +1253,7 @@ export function App({ container, initialProject, latestVersion }: Props) {
             activeProject={state.activeProject}
             onSelect={handleProjectSelect}
             onCreate={handleProjectCreate}
+            onEdit={handleProjectEdit}
             onSetDefault={handleSetDefault}
             onLink={handleProjectLink}
             onCancel={handleProjectCancel}
@@ -1238,6 +1263,16 @@ export function App({ container, initialProject, latestVersion }: Props) {
         {!state.confirmDelete && state.activeView === ViewType.ProjectCreate && (
           <ProjectForm onSave={handleProjectFormSave} onCancel={handleProjectFormCancel} />
         )}
+
+        {!state.confirmDelete &&
+          state.activeView === ViewType.ProjectEdit &&
+          state.editingProject && (
+            <ProjectForm
+              editingProject={state.editingProject}
+              onSave={handleProjectFormSave}
+              onCancel={handleProjectFormCancel}
+            />
+          )}
 
         {!state.confirmDelete &&
           state.activeView === ViewType.ProjectLink &&

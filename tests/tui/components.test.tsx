@@ -40,6 +40,7 @@ const mockProject: Project = {
   name: 'My App',
   description: 'Main application',
   isDefault: true,
+  gitRemote: null,
   createdAt: '2024-01-01T00:00:00Z',
   updatedAt: '2024-01-01T00:00:00Z',
 };
@@ -567,6 +568,127 @@ describe('TUI Component Rendering', () => {
     });
   });
 
+  describe('ProjectForm edit mode', () => {
+    const editProject: Project = {
+      id: 'proj-edit',
+      key: 'EDT',
+      name: 'Edit Me',
+      description: 'A description',
+      isDefault: false,
+      gitRemote: 'https://github.com/test/edit.git',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    it('shows edit project title when editing', () => {
+      const { lastFrame } = render(
+        <ProjectForm editingProject={editProject} onSave={() => {}} onCancel={() => {}} />,
+      );
+      expect(lastFrame()).toContain('edit project');
+    });
+
+    it('pre-populates fields from editingProject', () => {
+      const { lastFrame } = render(
+        <ProjectForm editingProject={editProject} onSave={() => {}} onCancel={() => {}} />,
+      );
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('Edit Me');
+      expect(frame).toContain('EDT');
+      expect(frame).toContain('A description');
+      expect(frame).toContain('https://github.com/test/edit.git');
+    });
+
+    it('shows read-only hint on key field when editing', async () => {
+      const { stdin, lastFrame } = render(
+        <ProjectForm editingProject={editProject} onSave={() => {}} onCancel={() => {}} />,
+      );
+      await delay(50);
+      // Navigate to Key field
+      stdin.write(ARROW_DOWN);
+      await delay(50);
+      expect(lastFrame()).toContain('read-only');
+    });
+
+    it('does not modify key field when editing', async () => {
+      const { stdin, lastFrame } = render(
+        <ProjectForm editingProject={editProject} onSave={() => {}} onCancel={() => {}} />,
+      );
+      await delay(50);
+      // Navigate to Key field
+      stdin.write(ARROW_DOWN);
+      await delay(50);
+      // Try to type
+      stdin.write('XYZ');
+      await delay(50);
+      // Key should remain unchanged
+      expect(lastFrame()).toContain('EDT');
+      expect(lastFrame()).not.toContain('EDTXYZ');
+    });
+
+    it('saves edited values via onSave callback', async () => {
+      const onSave = vi.fn();
+      const { stdin } = render(
+        <ProjectForm editingProject={editProject} onSave={onSave} onCancel={() => {}} />,
+      );
+      await delay(50);
+      // Edit name: clear and type new name
+      // Select all text via repeated backspace
+      for (let i = 0; i < 'Edit Me'.length; i++) {
+        stdin.write(BACKSPACE);
+        await delay(10);
+      }
+      stdin.write('Updated Name');
+      await delay(50);
+      // ctrl+s to save
+      stdin.write('\x13');
+      await delay(50);
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Updated Name',
+          key: 'EDT',
+          description: 'A description',
+          gitRemote: 'https://github.com/test/edit.git',
+        }),
+      );
+    });
+  });
+
+  describe('ProjectSelector edit action', () => {
+    it('calls onEdit when e is pressed', () => {
+      const onEdit = vi.fn();
+      const { stdin } = render(
+        <ProjectSelector
+          projects={[mockProject]}
+          activeProject={null}
+          onSelect={() => {}}
+          onCreate={() => {}}
+          onEdit={onEdit}
+          onSetDefault={() => {}}
+          onLink={() => {}}
+          onCancel={() => {}}
+        />,
+      );
+      stdin.write('e');
+      expect(onEdit).toHaveBeenCalledWith(mockProject);
+    });
+
+    it('shows edit hint text', () => {
+      const { lastFrame } = render(
+        <ProjectSelector
+          projects={[mockProject]}
+          activeProject={mockProject}
+          onSelect={() => {}}
+          onCreate={() => {}}
+          onEdit={() => {}}
+          onSetDefault={() => {}}
+          onLink={() => {}}
+          onCancel={() => {}}
+        />,
+      );
+      expect(lastFrame()).toContain('e: edit');
+    });
+  });
+
   describe('ProjectLinkForm cursor navigation', () => {
     it('moves cursor left/right and inserts at position', async () => {
       const { stdin, lastFrame } = render(
@@ -687,7 +809,9 @@ describe('TUI Component Rendering', () => {
           activeProject={mockProject}
           onSelect={() => {}}
           onCreate={() => {}}
+          onEdit={() => {}}
           onSetDefault={() => {}}
+          onLink={() => {}}
           onCancel={() => {}}
         />,
       );
@@ -703,7 +827,9 @@ describe('TUI Component Rendering', () => {
           activeProject={null}
           onSelect={() => {}}
           onCreate={() => {}}
+          onEdit={() => {}}
           onSetDefault={() => {}}
+          onLink={() => {}}
           onCancel={() => {}}
         />,
       );
@@ -717,7 +843,9 @@ describe('TUI Component Rendering', () => {
           activeProject={null}
           onSelect={() => {}}
           onCreate={() => {}}
+          onEdit={() => {}}
           onSetDefault={() => {}}
+          onLink={() => {}}
           onCancel={() => {}}
         />,
       );
@@ -731,7 +859,9 @@ describe('TUI Component Rendering', () => {
           activeProject={mockProject}
           onSelect={() => {}}
           onCreate={() => {}}
+          onEdit={() => {}}
           onSetDefault={() => {}}
+          onLink={() => {}}
           onCancel={() => {}}
         />,
       );
@@ -746,7 +876,9 @@ describe('TUI Component Rendering', () => {
           activeProject={null}
           onSelect={() => {}}
           onCreate={() => {}}
+          onEdit={() => {}}
           onSetDefault={onSetDefault}
+          onLink={() => {}}
           onCancel={() => {}}
         />,
       );
