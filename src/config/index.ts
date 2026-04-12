@@ -8,6 +8,7 @@ export interface Config {
   logLevel: string;
   otelEndpoint: string | undefined;
   updateCachePath: string;
+  dismissedGitRemotesPath: string;
   noUpdateCheck: boolean;
 }
 
@@ -28,6 +29,7 @@ export function loadConfig(): Config {
     logLevel: process.env['TASK_LOG_LEVEL'] ?? 'info',
     otelEndpoint: process.env['OTEL_EXPORTER_OTLP_ENDPOINT'],
     updateCachePath: join(dataDir, 'update-check.json'),
+    dismissedGitRemotesPath: join(dataDir, 'dismissed-git-remotes.json'),
     noUpdateCheck: process.env['TAYTO_NO_UPDATE_CHECK'] === '1',
   };
 }

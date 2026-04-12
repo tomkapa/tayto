@@ -15,6 +15,36 @@ const mockProject: Project = {
   updatedAt: '2024-01-01T00:00:00.000Z',
 };
 
+describe('appReducer detected-git-remote actions', () => {
+  it('SET_DETECTED_GIT_REMOTE stores the detected remote', () => {
+    const remote = GitRemote.parse('git@github.com:org/repo.git');
+    const state = appReducer(initialState, { type: 'SET_DETECTED_GIT_REMOTE', remote });
+    expect(state.detectedGitRemote).toBe(remote);
+  });
+
+  it('SET_DETECTED_GIT_REMOTE clears the remote when null', () => {
+    const remote = GitRemote.parse('git@github.com:org/repo.git');
+    const withRemote = appReducer(initialState, { type: 'SET_DETECTED_GIT_REMOTE', remote });
+    const state = appReducer(withRemote, { type: 'SET_DETECTED_GIT_REMOTE', remote: null });
+    expect(state.detectedGitRemote).toBeNull();
+  });
+
+  it('GO_BACK clears detectedGitRemote', () => {
+    const remote = GitRemote.parse('git@github.com:org/repo.git');
+    const withRemote = appReducer(initialState, { type: 'SET_DETECTED_GIT_REMOTE', remote });
+    const navigated = appReducer(withRemote, {
+      type: 'NAVIGATE_TO',
+      view: ViewType.ProjectCreate,
+    });
+    const state = appReducer(navigated, { type: 'GO_BACK' });
+    expect(state.detectedGitRemote).toBeNull();
+  });
+
+  it('initialState has detectedGitRemote as null', () => {
+    expect(initialState.detectedGitRemote).toBeNull();
+  });
+});
+
 describe('appReducer git-related actions', () => {
   it('SET_LINKING_PROJECT sets the linking project', () => {
     const state = appReducer(initialState, {

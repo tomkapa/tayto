@@ -1,6 +1,7 @@
 import type { Task } from '../types/task.js';
 import type { Project } from '../types/project.js';
 import type { TaskFilter } from '../types/task.js';
+import type { GitRemote } from '../types/git-remote.js';
 
 export const ViewType = {
   TaskList: 'task-list',
@@ -61,6 +62,11 @@ export interface AppState {
   isEpicReordering: boolean;
   /** Snapshot of epics before reorder started (for cancel/revert). */
   epicReorderSnapshot: Task[] | null;
+  /**
+   * Git remote detected in cwd that does not match any existing project.
+   * When set, the "new project detected" dialog is shown.
+   */
+  detectedGitRemote: GitRemote | null;
 }
 
 export interface FormData {
@@ -109,4 +115,5 @@ export type Action =
   | { type: 'EPIC_REORDER_MOVE'; direction: 'up' | 'down' }
   | { type: 'EXIT_EPIC_REORDER'; save: boolean }
   | { type: 'SET_LINKING_PROJECT'; project: Project | null }
-  | { type: 'SET_EDITING_PROJECT'; project: Project | null };
+  | { type: 'SET_EDITING_PROJECT'; project: Project | null }
+  | { type: 'SET_DETECTED_GIT_REMOTE'; remote: GitRemote | null };

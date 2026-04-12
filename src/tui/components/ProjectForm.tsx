@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Project } from '../../types/project.js';
+import type { GitRemote } from '../../types/git-remote.js';
 import { theme } from '../theme.js';
 
 interface Props {
   editingProject?: Project | null;
+  /** Pre-fill the Git Remote field when creating from a detected git repo. */
+  initialGitRemote?: GitRemote;
   onSave: (data: {
     name: string;
     key: string;
@@ -31,7 +34,7 @@ const FIELDS: Field[] = [
   { label: 'Default', key: 'isDefault', type: 'toggle' },
 ];
 
-export function ProjectForm({ editingProject, onSave, onCancel }: Props) {
+export function ProjectForm({ editingProject, initialGitRemote, onSave, onCancel }: Props) {
   const isEditing = !!editingProject;
   const [focusIndex, setFocusIndex] = useState(0);
   const [values, setValues] = useState<Record<string, string>>(() => {
@@ -48,7 +51,7 @@ export function ProjectForm({ editingProject, onSave, onCancel }: Props) {
       name: '',
       key: '',
       description: '',
-      gitRemote: '',
+      gitRemote: initialGitRemote?.value ?? '',
       isDefault: 'no',
     };
   });

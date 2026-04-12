@@ -1,4 +1,4 @@
-import { useReducer, useEffect, useCallback, useMemo, useState } from 'react';
+import { useReducer, useEffect, useCallback, useMemo, useState, useRef } from 'react';
 import { Box, Text, useInput, useApp, useStdout } from 'ink';
 import type { Container } from '../../cli/container.js';
 import {
@@ -23,8 +23,10 @@ import { ProjectSelector } from './ProjectSelector.js';
 import { ProjectForm } from './ProjectForm.js';
 import { ProjectLinkForm } from './ProjectLinkForm.js';
 import { detectGitRemote } from '../../utils/git.js';
+import { isDismissedRemote, dismissRemote } from '../../utils/dismissed-remotes.js';
 import { HelpOverlay } from './HelpOverlay.js';
 import { ConfirmDialog } from './ConfirmDialog.js';
+import { DetectedProjectDialog } from './DetectedProjectDialog.js';
 import { DependencyList } from './DependencyList.js';
 import { EpicPanel } from './EpicPanel.js';
 import { EpicPicker } from './EpicPicker.js';
@@ -280,6 +282,25 @@ export function App({ container, initialProject, latestVersion }: Props) {
     }
   }, [state.projects, state.activeProject, initialProject, container]);
 
+  // Detect git remote on first project load; prompt to create project if unlinked.
+  // Skip detection when --project flag was explicitly provided (user knows their project).
+  const gitRemoteCheckedRef = useRef(false);
+  useEffect(() => {
+    if (state.projects.length > 0 && !gitRemoteCheckedRef.current && !initialProject) {
+      gitRemoteCheckedRef.current = true;
+      const remoteResult = detectGitRemote();
+      if (remoteResult.ok && remoteResult.value) {
+        const remote = remoteResult.value;
+        const alreadyLinked = state.projects.some((p) => p.gitRemote?.equals(remote));
+        const dismissed = isDismissedRemote(container.dismissedGitRemotesPath, remote);
+        if (!alreadyLinked && !dismissed) {
+          logger.info(`TUI.detectGitRemote: unlinked remote detected: ${remote.value}`);
+          dispatch({ type: 'SET_DETECTED_GIT_REMOTE', remote });
+        }
+      }
+    }
+  }, [state.projects, initialProject]);
+
   // Reload tasks and epics when project or filter changes
   useEffect(() => {
     if (state.activeProject) {
@@ -321,6 +342,17 @@ export function App({ container, initialProject, latestVersion }: Props) {
         }
       } else if (input === 'n' || key.escape) {
         dispatch({ type: 'CANCEL_DELETE' });
+      }
+      return;
+    }
+
+    // Handle detected-git-remote dialog
+    if (state.detectedGitRemote && state.activeView === ViewType.TaskList) {
+      if (input === 'y') {
+        dispatch({ type: 'NAVIGATE_TO', view: ViewType.ProjectCreate });
+      } else if (input === 'n' || key.escape) {
+        dismissRemote(container.dismissedGitRemotesPath, state.detectedGitRemote);
+        dispatch({ type: 'SET_DETECTED_GIT_REMOTE', remote: null });
       }
       return;
     }
@@ -1029,8 +1061,11 @@ export function App({ container, initialProject, latestVersion }: Props) {
   );
 
   const handleProjectFormCancel = useCallback(() => {
+    if (state.activeView === ViewType.ProjectCreate && state.detectedGitRemote) {
+      dismissRemote(container.dismissedGitRemotesPath, state.detectedGitRemote);
+    }
     dispatch({ type: 'GO_BACK' });
-  }, []);
+  }, [state.activeView, state.detectedGitRemote, container]);
 
   const handleProjectLink = useCallback((project: Project) => {
     dispatch({ type: 'SET_LINKING_PROJECT', project });
@@ -1136,69 +1171,75 @@ export function App({ container, initialProject, latestVersion }: Props) {
         {state.confirmDelete && <ConfirmDialog task={state.confirmDelete} />}
 
         {!state.confirmDelete && state.activeView === ViewType.TaskList && (
-          <Box flexDirection="row" flexGrow={1}>
-            <EpicPanel
-              epics={state.epics}
-              selectedIndex={state.epicSelectedIndex}
-              selectedEpicIds={state.selectedEpicIds}
-              isFocused={state.focusedPanel === 'epic'}
-              isReordering={state.isEpicReordering}
-            />
-            <Box width={taskListWidth}>
-              <TaskList
-                tasks={state.tasks}
-                selectedIndex={state.selectedIndex}
-                searchQuery={state.searchQuery}
-                isSearchActive={state.isSearchActive}
-                isReordering={state.isReordering}
-                filter={state.filter}
-                activeProjectName={state.activeProject?.name ?? 'none'}
-                nonTerminalBlockerIds={
-                  new Set(
-                    state.depBlockers.filter((t) => !isTerminalStatus(t.status)).map((t) => t.id),
-                  )
-                }
-                nonTerminalDependentIds={
-                  new Set(
-                    state.depDependents.filter((t) => !isTerminalStatus(t.status)).map((t) => t.id),
-                  )
-                }
-                isSelectedBlocked={state.depBlockers.some((t) => !isTerminalStatus(t.status))}
-                isFocused={state.focusedPanel === 'list'}
-                epicFilterActive={state.selectedEpicIds.size > 0}
+          state.detectedGitRemote ? (
+            <DetectedProjectDialog remote={state.detectedGitRemote} />
+          ) : (
+            <Box flexDirection="row" flexGrow={1}>
+              <EpicPanel
+                epics={state.epics}
+                selectedIndex={state.epicSelectedIndex}
+                selectedEpicIds={state.selectedEpicIds}
+                isFocused={state.focusedPanel === 'epic'}
+                isReordering={state.isEpicReordering}
               />
-            </Box>
-            <Box width={taskDetailWidth}>
-              {previewTask ? (
-                <TaskDetail
-                  task={previewTask}
-                  blockers={state.depBlockers}
-                  dependents={state.depDependents}
-                  related={state.depRelated}
-                  duplicates={state.depDuplicates}
-                  isFocused={state.focusedPanel === 'detail'}
-                  scrollOffset={state.detailScrollOffset}
+              <Box width={taskListWidth}>
+                <TaskList
+                  tasks={state.tasks}
+                  selectedIndex={state.selectedIndex}
+                  searchQuery={state.searchQuery}
+                  isSearchActive={state.isSearchActive}
+                  isReordering={state.isReordering}
+                  filter={state.filter}
+                  activeProjectName={state.activeProject?.name ?? 'none'}
+                  nonTerminalBlockerIds={
+                    new Set(
+                      state.depBlockers.filter((t) => !isTerminalStatus(t.status)).map((t) => t.id),
+                    )
+                  }
+                  nonTerminalDependentIds={
+                    new Set(
+                      state.depDependents
+                        .filter((t) => !isTerminalStatus(t.status))
+                        .map((t) => t.id),
+                    )
+                  }
+                  isSelectedBlocked={state.depBlockers.some((t) => !isTerminalStatus(t.status))}
+                  isFocused={state.focusedPanel === 'list'}
+                  epicFilterActive={state.selectedEpicIds.size > 0}
                 />
-              ) : (
-                <Box
-                  flexDirection="column"
-                  flexGrow={1}
-                  borderStyle="bold"
-                  borderColor={theme.border}
-                >
-                  <Box>
-                    <Text color={theme.title} bold>
-                      {' '}
-                      detail
-                    </Text>
+              </Box>
+              <Box width={taskDetailWidth}>
+                {previewTask ? (
+                  <TaskDetail
+                    task={previewTask}
+                    blockers={state.depBlockers}
+                    dependents={state.depDependents}
+                    related={state.depRelated}
+                    duplicates={state.depDuplicates}
+                    isFocused={state.focusedPanel === 'detail'}
+                    scrollOffset={state.detailScrollOffset}
+                  />
+                ) : (
+                  <Box
+                    flexDirection="column"
+                    flexGrow={1}
+                    borderStyle="bold"
+                    borderColor={theme.border}
+                  >
+                    <Box>
+                      <Text color={theme.title} bold>
+                        {' '}
+                        detail
+                      </Text>
+                    </Box>
+                    <Box flexGrow={1} justifyContent="center" alignItems="center">
+                      <Text dimColor>No task selected</Text>
+                    </Box>
                   </Box>
-                  <Box flexGrow={1} justifyContent="center" alignItems="center">
-                    <Text dimColor>No task selected</Text>
-                  </Box>
-                </Box>
-              )}
+                )}
+              </Box>
             </Box>
-          </Box>
+          )
         )}
 
         {!state.confirmDelete && state.activeView === ViewType.TaskDetail && state.selectedTask && (
@@ -1261,7 +1302,11 @@ export function App({ container, initialProject, latestVersion }: Props) {
         )}
 
         {!state.confirmDelete && state.activeView === ViewType.ProjectCreate && (
-          <ProjectForm onSave={handleProjectFormSave} onCancel={handleProjectFormCancel} />
+          <ProjectForm
+            initialGitRemote={state.detectedGitRemote ?? undefined}
+            onSave={handleProjectFormSave}
+            onCancel={handleProjectFormCancel}
+          />
         )}
 
         {!state.confirmDelete &&

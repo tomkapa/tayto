@@ -18,6 +18,7 @@ import type { UpdateService } from '../service/update.service.js';
 
 export interface Container {
   dbPath: string;
+  dismissedGitRemotesPath: string;
   projectService: ProjectService;
   taskService: TaskService;
   dependencyService: DependencyService;
@@ -30,6 +31,7 @@ export function createContainer(
   dbPath: string,
   detectGitRemote?: DetectGitRemoteFn,
   updateCachePath?: string,
+  dismissedGitRemotesPath?: string,
 ): Container {
   const projectRepo = new SqliteProjectRepository(db);
   const taskRepo = new SqliteTaskRepository(db);
@@ -44,6 +46,7 @@ export function createContainer(
 
   return {
     dbPath,
+    dismissedGitRemotesPath: dismissedGitRemotesPath ?? join(tmpdir(), 'tayto-dismissed-git-remotes.json'),
     projectService,
     taskService,
     dependencyService,

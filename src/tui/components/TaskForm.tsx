@@ -92,8 +92,12 @@ export function TaskForm({ editingTask, allTasks, initialDeps, onSave, onCancel 
       setTimeout(() => {
         const content = values[field.key] ?? '';
         const result = openInEditor(content, field.editorFilename ?? `${field.key}.md`, {
-          beforeOpen: () => setRawMode(false),
-          afterOpen: () => setRawMode(true),
+          beforeOpen: () => {
+            setRawMode(false);
+          },
+          afterOpen: () => {
+            setRawMode(true);
+          },
         });
         if (result !== null) {
           setValues((v) => ({ ...v, [field.key]: result }));

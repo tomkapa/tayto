@@ -15,6 +15,7 @@ import { Crumbs } from '../../src/tui/components/Crumbs.js';
 import { FlashMessage } from '../../src/tui/components/FlashMessage.js';
 import { HelpOverlay } from '../../src/tui/components/HelpOverlay.js';
 import { ConfirmDialog } from '../../src/tui/components/ConfirmDialog.js';
+import { DetectedProjectDialog } from '../../src/tui/components/DetectedProjectDialog.js';
 import { Markdown } from '../../src/tui/components/Markdown.js';
 import { StatusBadge, TypeBadge } from '../../src/tui/components/Badges.js';
 import { initialState } from '../../src/tui/state.js';
@@ -496,6 +497,23 @@ describe('TUI Component Rendering', () => {
       stdin.write(BACKSPACE);
       await delay(50);
       expect(lastFrame()).toContain('ab');
+    });
+  });
+
+  describe('ProjectForm initialGitRemote', () => {
+    it('pre-fills Git Remote field when initialGitRemote is provided', async () => {
+      const remote = GitRemote.parse('git@github.com:org/repo.git');
+      const { lastFrame } = render(
+        <ProjectForm initialGitRemote={remote} onSave={() => {}} onCancel={() => {}} />,
+      );
+      await delay(50);
+      expect(lastFrame()).toContain('github.com/org/repo');
+    });
+
+    it('leaves Git Remote empty when initialGitRemote is not provided', async () => {
+      const { lastFrame } = render(<ProjectForm onSave={() => {}} onCancel={() => {}} />);
+      await delay(50);
+      expect(lastFrame()).not.toContain('github.com');
     });
   });
 
@@ -1066,6 +1084,25 @@ describe('TUI Component Rendering', () => {
       expect(frame).toContain('Fix login bug');
       expect(frame).toContain('OK');
       expect(frame).toContain('Cancel');
+    });
+  });
+
+  describe('DetectedProjectDialog', () => {
+    it('renders detected git remote with create and skip options', () => {
+      const remote = GitRemote.parse('git@github.com:org/my-repo.git');
+      const { lastFrame } = render(<DetectedProjectDialog remote={remote} />);
+      const frame = lastFrame();
+      expect(frame).toContain('New Repo Detected');
+      expect(frame).toContain('github.com/org/my-repo');
+      expect(frame).toContain('Create');
+      expect(frame).toContain('Skip');
+    });
+
+    it('renders HTTPS remote in normalized form', () => {
+      const remote = GitRemote.parse('https://github.com/acme/app.git');
+      const { lastFrame } = render(<DetectedProjectDialog remote={remote} />);
+      const frame = lastFrame();
+      expect(frame).toContain('github.com/acme/app');
     });
   });
 });

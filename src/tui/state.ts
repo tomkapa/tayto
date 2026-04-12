@@ -34,6 +34,7 @@ export const initialState: AppState = {
   editingProject: null,
   isEpicReordering: false,
   epicReorderSnapshot: null,
+  detectedGitRemote: null,
 };
 
 export function appReducer(state: AppState, action: Action): AppState {
@@ -59,6 +60,7 @@ export function appReducer(state: AppState, action: Action): AppState {
         formData: null,
         linkingProject: null,
         editingProject: null,
+        detectedGitRemote: null,
         focusedPanel: 'list',
       };
     }
@@ -305,5 +307,8 @@ export function appReducer(state: AppState, action: Action): AppState {
 
     case 'SET_EDITING_PROJECT':
       return { ...state, editingProject: action.project };
+
+    case 'SET_DETECTED_GIT_REMOTE':
+      return { ...state, detectedGitRemote: action.remote };
   }
 }
