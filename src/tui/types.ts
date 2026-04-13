@@ -2,6 +2,7 @@ import type { Task } from '../types/task.js';
 import type { Project } from '../types/project.js';
 import type { TaskFilter } from '../types/task.js';
 import type { GitRemote } from '../types/git-remote.js';
+import type { ChangelogEntry } from '../utils/changelog-parser.js';
 
 export const ViewType = {
   TaskList: 'task-list',
@@ -67,6 +68,15 @@ export interface AppState {
    * When set, the "new project detected" dialog is shown.
    */
   detectedGitRemote: GitRemote | null;
+  /**
+   * New changelog entries (versions newer than last seen) shown in the header ticker.
+   * null = no new versions since last launch.
+   */
+  changelogEntries: ChangelogEntry[] | null;
+  /** Index of the currently viewed entry in the changelog dialog. */
+  changelogIndex: number;
+  /** True when the full changelog dialog is open (triggered by W). */
+  changelogDialogOpen: boolean;
 }
 
 export interface FormData {
@@ -116,4 +126,9 @@ export type Action =
   | { type: 'EXIT_EPIC_REORDER'; save: boolean }
   | { type: 'SET_LINKING_PROJECT'; project: Project | null }
   | { type: 'SET_EDITING_PROJECT'; project: Project | null }
-  | { type: 'SET_DETECTED_GIT_REMOTE'; remote: GitRemote | null };
+  | { type: 'SET_DETECTED_GIT_REMOTE'; remote: GitRemote | null }
+  | { type: 'SET_CHANGELOG'; entries: ChangelogEntry[] | null }
+  | { type: 'CHANGELOG_NAVIGATE'; direction: 'up' | 'down' }
+  | { type: 'DISMISS_CHANGELOG' }
+  | { type: 'OPEN_CHANGELOG_DIALOG' }
+  | { type: 'CLOSE_CHANGELOG_DIALOG' };

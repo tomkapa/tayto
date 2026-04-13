@@ -18,6 +18,7 @@ import type { UpdateService } from '../service/update.service.js';
 
 export interface Container {
   dbPath: string;
+  updateCachePath: string;
   dismissedGitRemotesPath: string;
   projectService: ProjectService;
   taskService: TaskService;
@@ -40,13 +41,14 @@ export function createContainer(
   const dependencyService = new DependencyServiceImpl(depRepo, taskRepo);
   const taskService = new TaskServiceImpl(taskRepo, projectService, () => dependencyService);
   const portabilityService = new PortabilityServiceImpl(taskService, dependencyService);
-  const updateService = new UpdateServiceImpl(
-    updateCachePath ?? join(tmpdir(), 'tayto-update-check.json'),
-  );
+  const resolvedUpdateCachePath = updateCachePath ?? join(tmpdir(), 'tayto-update-check.json');
+  const updateService = new UpdateServiceImpl(resolvedUpdateCachePath);
 
   return {
     dbPath,
-    dismissedGitRemotesPath: dismissedGitRemotesPath ?? join(tmpdir(), 'tayto-dismissed-git-remotes.json'),
+    updateCachePath: resolvedUpdateCachePath,
+    dismissedGitRemotesPath:
+      dismissedGitRemotesPath ?? join(tmpdir(), 'tayto-dismissed-git-remotes.json'),
     projectService,
     taskService,
     dependencyService,

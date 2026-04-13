@@ -5,4 +5,4 @@
 - fmt and lint MUST be run before exit
 - Action and result MUST consistent between TUI and CLI command.
 - Use TDD to drive development, all code MUST be covered by test, and all test MUST be passed before exit
-- For type that has invariant like normalization, use dedicated type to prevent misuse instead of just string or number, for example, `TaskID` instead of `string`, `Priority` instead of `number`
+- For type that has invariant like normalization or special convention, use dedicated type to prevent misuse instead of just raw type like string, for example, `GitLink` instead of `string`, `TaskId` instead of `string`

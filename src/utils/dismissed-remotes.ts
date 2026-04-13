@@ -37,6 +37,9 @@ export function dismissRemote(filePath: string, remote: GitRemote): void {
     writeFileSync(filePath, JSON.stringify(list), 'utf-8');
     logger.info(`dismissRemote: persisted ${remote.value} to ${filePath}`);
   } catch (e: unknown) {
-    logger.error(`dismissRemote: failed to write ${filePath}`, e instanceof Error ? e : new Error(String(e)));
+    logger.error(
+      `dismissRemote: failed to write ${filePath}`,
+      e instanceof Error ? e : new Error(String(e)),
+    );
   }
 }

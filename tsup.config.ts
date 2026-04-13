@@ -1,7 +1,10 @@
 import { defineConfig } from 'tsup';
 import { readFileSync } from 'node:fs';
+import { parseChangelog } from './src/utils/changelog-parser.js';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8')) as { version: string };
+const changelogRaw = readFileSync('./CHANGELOG.md', 'utf-8');
+const changelogEntries = parseChangelog(changelogRaw);
 
 export default defineConfig({
   entry: ['src/index.ts'],
@@ -16,6 +19,7 @@ export default defineConfig({
   },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    __CHANGELOG_ENTRIES__: JSON.stringify(changelogEntries),
   },
   esbuildOptions(options) {
     options.jsx = 'automatic';

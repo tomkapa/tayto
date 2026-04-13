@@ -738,4 +738,97 @@ describe('appReducer', () => {
       expect(state.editingProject).toBeNull();
     });
   });
+
+  describe('changelog banner actions', () => {
+    const mockEntries = [
+      {
+        version: '0.7.0',
+        date: '2026-04-12',
+        sections: [{ heading: 'Added', items: ['New feature'] }],
+      },
+      {
+        version: '0.6.0',
+        date: '2026-04-10',
+        sections: [{ heading: 'Fixed', items: ['Bug fix'] }],
+      },
+    ];
+
+    it('initialState has null changelogEntries and index 0', () => {
+      expect(initialState.changelogEntries).toBeNull();
+      expect(initialState.changelogIndex).toBe(0);
+    });
+
+    it('SET_CHANGELOG sets entries and resets index to 0', () => {
+      const state = appReducer(initialState, { type: 'SET_CHANGELOG', entries: mockEntries });
+      expect(state.changelogEntries).toEqual(mockEntries);
+      expect(state.changelogIndex).toBe(0);
+    });
+
+    it('SET_CHANGELOG with null clears entries', () => {
+      let state = appReducer(initialState, { type: 'SET_CHANGELOG', entries: mockEntries });
+      state = appReducer(state, { type: 'SET_CHANGELOG', entries: null });
+      expect(state.changelogEntries).toBeNull();
+    });
+
+    it('CHANGELOG_NAVIGATE down increments index', () => {
+      let state = appReducer(initialState, { type: 'SET_CHANGELOG', entries: mockEntries });
+      state = appReducer(state, { type: 'CHANGELOG_NAVIGATE', direction: 'down' });
+      expect(state.changelogIndex).toBe(1);
+    });
+
+    it('CHANGELOG_NAVIGATE down clamps at last entry', () => {
+      let state = appReducer(initialState, { type: 'SET_CHANGELOG', entries: mockEntries });
+      state = appReducer(state, { type: 'CHANGELOG_NAVIGATE', direction: 'down' });
+      state = appReducer(state, { type: 'CHANGELOG_NAVIGATE', direction: 'down' });
+      expect(state.changelogIndex).toBe(1); // clamped at max (1)
+    });
+
+    it('CHANGELOG_NAVIGATE up clamps at 0', () => {
+      let state = appReducer(initialState, { type: 'SET_CHANGELOG', entries: mockEntries });
+      state = appReducer(state, { type: 'CHANGELOG_NAVIGATE', direction: 'up' });
+      expect(state.changelogIndex).toBe(0);
+    });
+
+    it('CHANGELOG_NAVIGATE up decrements index', () => {
+      let state = appReducer(initialState, { type: 'SET_CHANGELOG', entries: mockEntries });
+      state = appReducer(state, { type: 'CHANGELOG_NAVIGATE', direction: 'down' });
+      state = appReducer(state, { type: 'CHANGELOG_NAVIGATE', direction: 'up' });
+      expect(state.changelogIndex).toBe(0);
+    });
+
+    it('CHANGELOG_NAVIGATE is a no-op when entries is null', () => {
+      const state = appReducer(initialState, { type: 'CHANGELOG_NAVIGATE', direction: 'down' });
+      expect(state.changelogIndex).toBe(0);
+    });
+
+    it('DISMISS_CHANGELOG clears entries, resets index, and closes dialog', () => {
+      let state = appReducer(initialState, { type: 'SET_CHANGELOG', entries: mockEntries });
+      state = appReducer(state, { type: 'OPEN_CHANGELOG_DIALOG' });
+      state = appReducer(state, { type: 'CHANGELOG_NAVIGATE', direction: 'down' });
+      state = appReducer(state, { type: 'DISMISS_CHANGELOG' });
+      expect(state.changelogEntries).toBeNull();
+      expect(state.changelogIndex).toBe(0);
+      expect(state.changelogDialogOpen).toBe(false);
+    });
+
+    it('initialState has changelogDialogOpen=false', () => {
+      expect(initialState.changelogDialogOpen).toBe(false);
+    });
+
+    it('OPEN_CHANGELOG_DIALOG sets changelogDialogOpen=true and resets index', () => {
+      let state = appReducer(initialState, { type: 'SET_CHANGELOG', entries: mockEntries });
+      state = appReducer(state, { type: 'CHANGELOG_NAVIGATE', direction: 'down' });
+      state = appReducer(state, { type: 'OPEN_CHANGELOG_DIALOG' });
+      expect(state.changelogDialogOpen).toBe(true);
+      expect(state.changelogIndex).toBe(0);
+    });
+
+    it('CLOSE_CHANGELOG_DIALOG closes dialog but preserves entries', () => {
+      let state = appReducer(initialState, { type: 'SET_CHANGELOG', entries: mockEntries });
+      state = appReducer(state, { type: 'OPEN_CHANGELOG_DIALOG' });
+      state = appReducer(state, { type: 'CLOSE_CHANGELOG_DIALOG' });
+      expect(state.changelogDialogOpen).toBe(false);
+      expect(state.changelogEntries).toEqual(mockEntries);
+    });
+  });
 });

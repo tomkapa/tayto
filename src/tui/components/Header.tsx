@@ -3,6 +3,7 @@ import type { AppState } from '../types.js';
 import { ViewType } from '../types.js';
 import { theme } from '../theme.js';
 import { Logo } from './Logo.js';
+import { ChangelogTicker } from './ChangelogTicker.js';
 
 interface KeyHint {
   key: string;
@@ -12,6 +13,13 @@ interface KeyHint {
 function getKeyHints(state: AppState): KeyHint[] {
   const { activeView, isSearchActive, isReordering, isEpicReordering, isAddingDep, focusedPanel } =
     state;
+
+  if (state.changelogDialogOpen) {
+    return [
+      { key: '↑/↓', desc: 'navigate' },
+      { key: 'esc', desc: 'close' },
+    ];
+  }
 
   if (isAddingDep) {
     return [
@@ -164,6 +172,7 @@ export function Header({ state, latestVersion }: Props) {
 
   const hintCols = hints.length <= 7 ? 2 : hints.length <= 12 ? 3 : 4;
   const columns = chunkHints(hints, hintCols);
+  const hasTicker = state.changelogEntries !== null;
 
   return (
     <Box flexDirection="row" gap={1}>
@@ -195,22 +204,43 @@ export function Header({ state, latestVersion }: Props) {
         )}
       </Box>
 
-      <Box flexGrow={1} justifyContent="flex-end">
-        <Box flexDirection="row" gap={2}>
-          {columns.map((col, ci) => (
-            <Box key={col[0]?.key ?? String(ci)} flexDirection="column">
-              {col.map((h) => (
-                <Box key={h.key}>
-                  <Text color={theme.menu.key} bold>
-                    &lt;{h.key}&gt;
-                  </Text>
-                  <Text color={theme.menu.desc}>{h.desc}</Text>
-                </Box>
-              ))}
+      {hasTicker && state.changelogEntries ? (
+        <>
+          <Box flexGrow={1} justifyContent="center">
+            <ChangelogTicker entries={state.changelogEntries} />
+          </Box>
+          <Box flexShrink={0}>
+            <HintGrid columns={columns} />
+          </Box>
+        </>
+      ) : (
+        <Box flexGrow={1} justifyContent="flex-end">
+          <HintGrid columns={columns} />
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+interface HintGridProps {
+  columns: Array<Array<{ key: string; desc: string }>>;
+}
+
+function HintGrid({ columns }: HintGridProps) {
+  return (
+    <Box flexDirection="row" gap={2}>
+      {columns.map((col, ci) => (
+        <Box key={col[0]?.key ?? String(ci)} flexDirection="column">
+          {col.map((h) => (
+            <Box key={h.key}>
+              <Text color={theme.menu.key} bold>
+                &lt;{h.key}&gt;
+              </Text>
+              <Text color={theme.menu.desc}>{h.desc}</Text>
             </Box>
           ))}
         </Box>
-      </Box>
+      ))}
     </Box>
   );
 }

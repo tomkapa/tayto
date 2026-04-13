@@ -31,9 +31,14 @@ import { DependencyList } from './DependencyList.js';
 import { EpicPanel } from './EpicPanel.js';
 import { EpicPicker } from './EpicPicker.js';
 import { openAllMermaidDiagrams } from './Markdown.js';
+import { ChangelogBanner } from './ChangelogBanner.js';
 import { theme } from '../theme.js';
 import { logger } from '../../logging/logger.js';
 import { useAutoRefetch } from '../useAutoRefetch.js';
+import { CHANGELOG_ENTRIES } from '../../changelog.js';
+import { readSeenVersion, writeSeenVersion } from '../../utils/changelog-seen.js';
+import { APP_VERSION } from '../../version.js';
+import { isNewerVersion } from '../../utils/version.js';
 
 interface Props {
   container: Container;
@@ -301,6 +306,31 @@ export function App({ container, initialProject, latestVersion }: Props) {
     }
   }, [state.projects, initialProject]);
 
+  // Show changelog banner when the user launches a new version for the first time.
+  const changelogCheckedRef = useRef(false);
+  useEffect(() => {
+    if (changelogCheckedRef.current) return;
+    changelogCheckedRef.current = true;
+    const seenVersion = readSeenVersion(container.updateCachePath);
+    if (seenVersion !== APP_VERSION) {
+      // Show all versions newer than seenVersion, up to and including APP_VERSION.
+      // e.g. upgrading from 0.5.0 → 0.7.0 shows entries for 0.6.x and 0.7.0.
+      const newEntries = CHANGELOG_ENTRIES.filter(
+        (e) =>
+          isNewerVersion(e.version, seenVersion ?? '0.0.0') &&
+          !isNewerVersion(e.version, APP_VERSION),
+      );
+      if (newEntries.length > 0) {
+        logger.info(
+          `TUI.changelog: showing ticker for [${newEntries.map((e) => e.version).join(', ')}] (last seen: ${seenVersion ?? 'none'})`,
+        );
+        dispatch({ type: 'SET_CHANGELOG', entries: newEntries });
+        // Mark as seen immediately — ticker is a session-only notification.
+        writeSeenVersion(container.updateCachePath, APP_VERSION);
+      }
+    }
+  }, [container.updateCachePath]);
+
   // Reload tasks and epics when project or filter changes
   useEffect(() => {
     if (state.activeProject) {
@@ -324,6 +354,23 @@ export function App({ container, initialProject, latestVersion }: Props) {
 
   // Keyboard handler
   useInput((input, key) => {
+    // Handle changelog dialog (opened with W) — modal while visible
+    if (state.changelogDialogOpen) {
+      if (key.upArrow || input === 'k') {
+        dispatch({ type: 'CHANGELOG_NAVIGATE', direction: 'up' });
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        dispatch({ type: 'CHANGELOG_NAVIGATE', direction: 'down' });
+        return;
+      }
+      if (key.escape || input === 'q' || input === 'W') {
+        dispatch({ type: 'CLOSE_CHANGELOG_DIALOG' });
+        return;
+      }
+      return;
+    }
+
     // Handle confirm delete dialog
     if (state.confirmDelete) {
       if (input === 'y') {
@@ -722,6 +769,10 @@ export function App({ container, initialProject, latestVersion }: Props) {
       }
       if (input === '0') {
         dispatch({ type: 'CLEAR_FILTER' });
+        return;
+      }
+      if (input === 'W' && state.changelogEntries) {
+        dispatch({ type: 'OPEN_CHANGELOG_DIALOG' });
         return;
       }
     }
@@ -1170,8 +1221,18 @@ export function App({ container, initialProject, latestVersion }: Props) {
       <Box flexDirection="column" flexGrow={1} overflowY="hidden">
         {state.confirmDelete && <ConfirmDialog task={state.confirmDelete} />}
 
-        {!state.confirmDelete && state.activeView === ViewType.TaskList && (
-          state.detectedGitRemote ? (
+        {!state.confirmDelete &&
+          state.changelogEntries &&
+          state.changelogDialogOpen &&
+          state.activeView === ViewType.TaskList && (
+            <ChangelogBanner entries={state.changelogEntries} currentIndex={state.changelogIndex} />
+          )}
+
+        {/* Task list: always visible (ticker is non-blocking in the header) */}
+        {!state.confirmDelete &&
+          !state.changelogDialogOpen &&
+          state.activeView === ViewType.TaskList &&
+          (state.detectedGitRemote ? (
             <DetectedProjectDialog remote={state.detectedGitRemote} />
           ) : (
             <Box flexDirection="row" flexGrow={1}>
@@ -1239,8 +1300,7 @@ export function App({ container, initialProject, latestVersion }: Props) {
                 )}
               </Box>
             </Box>
-          )
-        )}
+          ))}
 
         {!state.confirmDelete && state.activeView === ViewType.TaskDetail && state.selectedTask && (
           <TaskDetail

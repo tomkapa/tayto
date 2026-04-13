@@ -35,6 +35,9 @@ export const initialState: AppState = {
   isEpicReordering: false,
   epicReorderSnapshot: null,
   detectedGitRemote: null,
+  changelogEntries: null,
+  changelogIndex: 0,
+  changelogDialogOpen: false,
 };
 
 export function appReducer(state: AppState, action: Action): AppState {
@@ -310,5 +313,27 @@ export function appReducer(state: AppState, action: Action): AppState {
 
     case 'SET_DETECTED_GIT_REMOTE':
       return { ...state, detectedGitRemote: action.remote };
+
+    case 'SET_CHANGELOG':
+      return { ...state, changelogEntries: action.entries, changelogIndex: 0 };
+
+    case 'CHANGELOG_NAVIGATE': {
+      if (!state.changelogEntries) return state;
+      const max = Math.max(0, state.changelogEntries.length - 1);
+      const newIdx =
+        action.direction === 'up'
+          ? Math.max(0, state.changelogIndex - 1)
+          : Math.min(max, state.changelogIndex + 1);
+      return { ...state, changelogIndex: newIdx };
+    }
+
+    case 'DISMISS_CHANGELOG':
+      return { ...state, changelogEntries: null, changelogIndex: 0, changelogDialogOpen: false };
+
+    case 'OPEN_CHANGELOG_DIALOG':
+      return { ...state, changelogDialogOpen: true, changelogIndex: 0 };
+
+    case 'CLOSE_CHANGELOG_DIALOG':
+      return { ...state, changelogDialogOpen: false };
   }
 }

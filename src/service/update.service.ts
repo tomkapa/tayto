@@ -5,6 +5,9 @@ import type { Result } from '../types/common.js';
 import { ok, err } from '../types/common.js';
 import { AppError, toMessage } from '../errors/app-error.js';
 import { logger } from '../logging/logger.js';
+import { isNewerVersion } from '../utils/version.js';
+
+export { isNewerVersion };
 
 const NPM_REGISTRY_URL = 'https://registry.npmjs.org/@tomkapa/tayto/latest';
 const PACKAGE_NAME = '@tomkapa/tayto';
@@ -31,22 +34,6 @@ function isValidCache(value: unknown): value is UpdateCache {
   if (typeof value !== 'object' || value === null) return false;
   const obj = value as Record<string, unknown>;
   return typeof obj['checkedAt'] === 'number' && typeof obj['latestVersion'] === 'string';
-}
-
-/**
- * Compare two semver strings (major.minor.patch).
- * Returns true if `a` is strictly newer than `b`.
- */
-export function isNewerVersion(a: string, b: string): boolean {
-  const parse = (v: string): [number, number, number] => {
-    const parts = v.replace(/^v/, '').split('.').map(Number);
-    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
-  };
-  const [aMaj, aMin, aPatch] = parse(a);
-  const [bMaj, bMin, bPatch] = parse(b);
-  if (aMaj !== bMaj) return aMaj > bMaj;
-  if (aMin !== bMin) return aMin > bMin;
-  return aPatch > bPatch;
 }
 
 export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
@@ -171,7 +158,19 @@ export class UpdateServiceImpl implements UpdateService {
 
   private writeCache(entry: UpdateCache): void {
     try {
-      writeFileSync(this.cachePath, JSON.stringify(entry), 'utf-8');
+      // Merge with existing content to preserve fields written by other utilities
+      // (e.g. changelogSeenVersion written by changelog-seen.ts).
+      let existing: Record<string, unknown> = {};
+      try {
+        const raw = readFileSync(this.cachePath, 'utf-8');
+        const parsed: unknown = JSON.parse(raw);
+        if (typeof parsed === 'object' && parsed !== null) {
+          existing = parsed as Record<string, unknown>;
+        }
+      } catch {
+        // File absent or malformed — start fresh
+      }
+      writeFileSync(this.cachePath, JSON.stringify({ ...existing, ...entry }), 'utf-8');
     } catch (e: unknown) {
       logger.warn('Failed to write update cache', {
         error: toMessage(e),
