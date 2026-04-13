@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { trace } from '@opentelemetry/api';
-import type { Result } from '../types/common.js';
+import type { Result, FetchFn } from '../types/common.js';
 import { ok, err } from '../types/common.js';
 import { AppError, toMessage } from '../errors/app-error.js';
 import { logger } from '../logging/logger.js';
@@ -36,7 +36,7 @@ function isValidCache(value: unknown): value is UpdateCache {
   return typeof obj['checkedAt'] === 'number' && typeof obj['latestVersion'] === 'string';
 }
 
-export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
+export type { FetchFn } from '../types/common.js';
 export type ExecFn = (cmd: string, args: string[]) => void;
 
 function defaultExec(cmd: string, args: string[]): void {

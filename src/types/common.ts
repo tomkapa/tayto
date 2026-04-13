@@ -15,3 +15,5 @@ export interface CLIOutput<T> {
   data?: T;
   error?: { code: string; message: string };
 }
+
+export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;

@@ -9,6 +9,7 @@ import { buildCLI } from './cli/index.js';
 import { AppError } from './errors/app-error.js';
 import { APP_VERSION } from './version.js';
 import type { UpdateCheckResult } from './service/update.service.js';
+import { maybeSendHeartbeat } from './telemetry/heartbeat.js';
 
 async function checkForUpdateQuietly(
   container: Container,
@@ -39,6 +40,8 @@ async function main(): Promise<void> {
   const config = loadConfig();
   logger.init(config.logDir);
   initTelemetry(config);
+
+  maybeSendHeartbeat({ statePath: config.telemetryStatePath, version: APP_VERSION });
 
   const db = createDatabase(config.dbPath);
   runMigrations(db);
