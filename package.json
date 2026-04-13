@@ -1,6 +1,6 @@
 {
   "name": "@tomkapa/tayto",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "CLI tool for task management - for solo devs and AI agents",
   "type": "module",
   "bin": {
