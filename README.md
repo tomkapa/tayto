@@ -4,7 +4,7 @@
 
 [![npm](https://img.shields.io/npm/v/@tomkapa/tayto)](https://www.npmjs.com/package/@tomkapa/tayto)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D25-brightgreen)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
 
 **Stop losing tasks between AI sessions. Stop drowning in Jira fields you don't need.**
 
@@ -38,7 +38,7 @@ Tayto solves exactly this: a **CLI for agents** and a **TUI for humans**, sharin
 npm install -g @tomkapa/tayto
 ```
 
-**Requires:** Node.js >= 25
+**Requires:** Node.js >= 22
 
 ---
 
