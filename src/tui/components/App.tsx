@@ -604,7 +604,7 @@ export function App({ container, initialProject, latestVersion }: Props) {
 
     // Tab / Shift+Tab: cycle panel focus forward or backward
     if (key.tab && state.activeView === ViewType.TaskList) {
-      const panels: Array<'epic' | 'list' | 'detail'> = previewTask
+      const panels: Array<'epic' | 'list' | 'detail'> = previewItem
         ? ['epic', 'list', 'detail']
         : ['epic', 'list'];
       const curIdx = panels.indexOf(state.focusedPanel);
@@ -805,7 +805,7 @@ export function App({ container, initialProject, latestVersion }: Props) {
     }
 
     // Task List — detail panel focused (preview task shortcuts)
-    if (state.activeView === ViewType.TaskList && state.focusedPanel === 'detail' && previewTask) {
+    if (state.activeView === ViewType.TaskList && state.focusedPanel === 'detail' && previewItem) {
       if (key.upArrow || input === 'k') {
         dispatch({ type: 'DETAIL_SCROLL', direction: 'up' });
         return;
@@ -815,20 +815,20 @@ export function App({ container, initialProject, latestVersion }: Props) {
         return;
       }
       if (input === 'e') {
-        dispatch({ type: 'SELECT_TASK', task: previewTask });
+        dispatch({ type: 'SELECT_TASK', task: previewItem });
         dispatch({ type: 'NAVIGATE_TO', view: ViewType.TaskEdit });
         return;
       }
       if (input === 'd') {
-        dispatch({ type: 'CONFIRM_DELETE', task: previewTask });
+        dispatch({ type: 'CONFIRM_DELETE', task: previewItem });
         return;
       }
       if (input === 's') {
-        cycleStatus(previewTask);
+        cycleStatus(previewItem);
         return;
       }
       if (input === 'm') {
-        const allText = `${previewTask.description}\n${previewTask.technicalNotes}\n${previewTask.additionalRequirements}`;
+        const allText = `${previewItem.description}\n${previewItem.technicalNotes}\n${previewItem.additionalRequirements}`;
         const count = openAllMermaidDiagrams(allText);
         if (count > 0) {
           dispatch({
@@ -840,8 +840,8 @@ export function App({ container, initialProject, latestVersion }: Props) {
         return;
       }
       if (input === 'D') {
-        dispatch({ type: 'SELECT_TASK', task: previewTask });
-        loadDeps(previewTask.id);
+        dispatch({ type: 'SELECT_TASK', task: previewItem });
+        loadDeps(previewItem.id);
         dispatch({ type: 'NAVIGATE_TO', view: ViewType.DependencyList });
         return;
       }
@@ -1205,7 +1205,10 @@ export function App({ container, initialProject, latestVersion }: Props) {
     dispatch({ type: 'GO_BACK' });
   }, []);
 
-  const previewTask = state.tasks[state.selectedIndex] ?? null;
+  const previewItem: Task | null =
+    state.focusedPanel === 'epic'
+      ? (state.epics[state.epicSelectedIndex] ?? null)
+      : (state.tasks[state.selectedIndex] ?? null);
 
   // Derive initial deps for the edit form from the already-loaded dep state.
   // depBlockers = tasks the selected task depends on (outgoing blocks edges).
@@ -1230,14 +1233,14 @@ export function App({ container, initialProject, latestVersion }: Props) {
     const result = container.taskService.listTasks(state.activeProject, {});
     return result.ok ? result.value : [];
   }, [container, state.activeProject, state.tasks]);
-  const previewTaskId = previewTask?.id ?? null;
+  const previewItemId = previewItem?.id ?? null;
 
   // Load deps for the preview pane when selection changes (track ID, not object reference)
   useEffect(() => {
-    if (state.activeView === ViewType.TaskList && previewTaskId) {
-      loadDeps(previewTaskId);
+    if (state.activeView === ViewType.TaskList && previewItemId) {
+      loadDeps(previewItemId);
     }
-  }, [state.activeView, previewTaskId, loadDeps]);
+  }, [state.activeView, previewItemId, loadDeps]);
 
   return (
     <Box flexDirection="column" height={stdout.rows}>
@@ -1309,9 +1312,9 @@ export function App({ container, initialProject, latestVersion }: Props) {
                   />
                 </Box>
                 <Box width={taskDetailWidth}>
-                  {previewTask ? (
+                  {previewItem ? (
                     <TaskDetail
-                      task={previewTask}
+                      task={previewItem}
                       blockers={state.depBlockers}
                       dependents={state.depDependents}
                       related={state.depRelated}

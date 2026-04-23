@@ -3,6 +3,7 @@ import { appReducer, initialState } from '../../src/tui/state.js';
 import { ViewType, TopTab } from '../../src/tui/types.js';
 import type { Task } from '../../src/types/task.js';
 import type { Project } from '../../src/types/project.js';
+import type { AppState } from '../../src/tui/types.js';
 
 const mockTask: Task = {
   id: 'task-1',
@@ -18,6 +19,27 @@ const mockTask: Task = {
   createdAt: '2024-01-01T00:00:00Z',
   updatedAt: '2024-01-01T00:00:00Z',
 };
+
+const mockEpic: Task = {
+  id: 'epic-1',
+  projectId: 'proj-1',
+  parentId: null,
+  name: 'Epic task',
+  description: 'An epic',
+  type: 'epic',
+  status: 'backlog',
+  rank: 500,
+  technicalNotes: '',
+  additionalRequirements: '',
+  createdAt: '2024-01-01T00:00:00Z',
+  updatedAt: '2024-01-01T00:00:00Z',
+};
+
+function derivePreviewItem(state: AppState): Task | null {
+  return state.focusedPanel === 'epic'
+    ? (state.epics[state.epicSelectedIndex] ?? null)
+    : (state.tasks[state.selectedIndex] ?? null);
+}
 
 describe('appReducer', () => {
   it('starts with TaskList view and single breadcrumb', () => {
@@ -866,5 +888,69 @@ describe('appReducer', () => {
       const switched = appReducer(state, { type: 'SWITCH_TAB', tab: TopTab.Settings });
       expect(switched.breadcrumbs).toEqual([ViewType.Settings]);
     });
+  });
+});
+
+describe('previewItem derivation', () => {
+  it('returns selected task when focusedPanel is list', () => {
+    const state: AppState = {
+      ...initialState,
+      focusedPanel: 'list',
+      tasks: [mockTask],
+      selectedIndex: 0,
+      epics: [mockEpic],
+      epicSelectedIndex: 0,
+    };
+    expect(derivePreviewItem(state)).toBe(mockTask);
+  });
+
+  it('returns selected task when focusedPanel is detail', () => {
+    const state: AppState = {
+      ...initialState,
+      focusedPanel: 'detail',
+      tasks: [mockTask],
+      selectedIndex: 0,
+      epics: [mockEpic],
+      epicSelectedIndex: 0,
+    };
+    expect(derivePreviewItem(state)).toBe(mockTask);
+  });
+
+  it('returns selected epic when focusedPanel is epic', () => {
+    const state: AppState = {
+      ...initialState,
+      focusedPanel: 'epic',
+      tasks: [mockTask],
+      selectedIndex: 0,
+      epics: [mockEpic],
+      epicSelectedIndex: 0,
+    };
+    expect(derivePreviewItem(state)).toBe(mockEpic);
+  });
+
+  it('switches preview when focus changes from epic to list', () => {
+    const base: AppState = {
+      ...initialState,
+      tasks: [mockTask],
+      selectedIndex: 0,
+      epics: [mockEpic],
+      epicSelectedIndex: 0,
+    };
+    const withEpicFocus = { ...base, focusedPanel: 'epic' as const };
+    const withListFocus = { ...base, focusedPanel: 'list' as const };
+    expect(derivePreviewItem(withEpicFocus)).toBe(mockEpic);
+    expect(derivePreviewItem(withListFocus)).toBe(mockTask);
+  });
+
+  it('returns null when focusedPanel is epic but no epics exist', () => {
+    const state: AppState = {
+      ...initialState,
+      focusedPanel: 'epic',
+      tasks: [mockTask],
+      selectedIndex: 0,
+      epics: [],
+      epicSelectedIndex: 0,
+    };
+    expect(derivePreviewItem(state)).toBeNull();
   });
 });
