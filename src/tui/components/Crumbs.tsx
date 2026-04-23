@@ -9,6 +9,7 @@ const VIEW_LABELS: Record<string, string> = {
   'task-edit': 'edit',
   'project-selector': 'projects',
   help: 'help',
+  settings: 'settings',
 };
 
 interface Props {

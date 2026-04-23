@@ -18,8 +18,10 @@ import { ConfirmDialog } from '../../src/tui/components/ConfirmDialog.js';
 import { DetectedProjectDialog } from '../../src/tui/components/DetectedProjectDialog.js';
 import { Markdown } from '../../src/tui/components/Markdown.js';
 import { StatusBadge, TypeBadge } from '../../src/tui/components/Badges.js';
+import { TabBar } from '../../src/tui/components/TabBar.js';
+import { SettingsView } from '../../src/tui/components/SettingsView.js';
 import { initialState } from '../../src/tui/state.js';
-import { ViewType } from '../../src/tui/types.js';
+import { ViewType, TopTab } from '../../src/tui/types.js';
 
 const mockTask: Task = {
   id: '01ABC123',
@@ -1000,6 +1002,20 @@ describe('TUI Component Rendering', () => {
       const frame = lastFrame() ?? '';
       expect(frame).toContain('S-tab');
     });
+
+    it('renders settings hint on task list', () => {
+      const { lastFrame } = render(<Header state={initialState} />);
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('settings');
+    });
+
+    it('renders settings view hints', () => {
+      const state = { ...initialState, activeView: ViewType.Settings };
+      const { lastFrame } = render(<Header state={state} />);
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('tasks');
+      expect(frame).toContain('quit');
+    });
   });
 
   describe('Crumbs', () => {
@@ -1015,6 +1031,11 @@ describe('TUI Component Rendering', () => {
     it('renders single breadcrumb', () => {
       const { lastFrame } = render(<Crumbs breadcrumbs={[ViewType.TaskList]} />);
       expect(lastFrame()).toContain('tasks');
+    });
+
+    it('renders settings breadcrumb', () => {
+      const { lastFrame } = render(<Crumbs breadcrumbs={[ViewType.Settings]} />);
+      expect(lastFrame()).toContain('settings');
     });
   });
 
@@ -1084,6 +1105,34 @@ describe('TUI Component Rendering', () => {
       expect(frame).toContain('Fix login bug');
       expect(frame).toContain('OK');
       expect(frame).toContain('Cancel');
+    });
+  });
+
+  describe('TabBar', () => {
+    it('renders both tabs', () => {
+      const { lastFrame } = render(<TabBar activeTab={TopTab.Tasks} />);
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('Tasks');
+      expect(frame).toContain('Settings');
+    });
+
+    it('renders with Tasks as active tab', () => {
+      const { lastFrame } = render(<TabBar activeTab={TopTab.Tasks} />);
+      expect(lastFrame()).toBeTruthy();
+    });
+
+    it('renders with Settings as active tab', () => {
+      const { lastFrame } = render(<TabBar activeTab={TopTab.Settings} />);
+      expect(lastFrame()).toBeTruthy();
+    });
+  });
+
+  describe('SettingsView', () => {
+    it('renders placeholder text', () => {
+      const { lastFrame } = render(<SettingsView />);
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('settings');
+      expect(frame).toContain('No settings available yet');
     });
   });
 

@@ -10,7 +10,7 @@ import {
 } from '../../types/enums.js';
 import type { Task, DependencyEntry } from '../../types/task.js';
 import type { Project } from '../../types/project.js';
-import { ViewType } from '../types.js';
+import { ViewType, TopTab } from '../types.js';
 import { appReducer, initialState } from '../state.js';
 import { STATUS_VALUES, TYPE_VALUES } from '../constants.js';
 import { Header } from './Header.js';
@@ -32,6 +32,8 @@ import { EpicPanel } from './EpicPanel.js';
 import { EpicPicker } from './EpicPicker.js';
 import { openAllMermaidDiagrams } from './Markdown.js';
 import { ChangelogBanner } from './ChangelogBanner.js';
+import { TabBar } from './TabBar.js';
+import { SettingsView } from './SettingsView.js';
 import { theme } from '../theme.js';
 import { logger } from '../../logging/logger.js';
 import { useAutoRefetch } from '../useAutoRefetch.js';
@@ -496,6 +498,27 @@ export function App({ container, initialProject, latestVersion }: Props) {
       return;
     }
 
+    // Tab switching — only from root views (TaskList or Settings), no modal active
+    const isRootView =
+      state.activeView === ViewType.TaskList || state.activeView === ViewType.Settings;
+    const noModal =
+      !state.changelogEntries &&
+      !state.detectedGitRemote &&
+      !state.isReordering &&
+      !state.isEpicReordering &&
+      !state.isAddingDep;
+
+    if (noModal && isRootView) {
+      if (input === '1') {
+        dispatch({ type: 'SWITCH_TAB', tab: TopTab.Tasks });
+        return;
+      }
+      if (input === '2') {
+        dispatch({ type: 'SWITCH_TAB', tab: TopTab.Settings });
+        return;
+      }
+    }
+
     // Epic reorder mode
     if (state.isEpicReordering) {
       if (key.upArrow || input === 'k') {
@@ -557,7 +580,11 @@ export function App({ container, initialProject, latestVersion }: Props) {
     }
 
     // Global
-    if (input === 'q' && state.activeView === ViewType.TaskList && state.focusedPanel === 'list') {
+    if (
+      input === 'q' &&
+      (state.activeView === ViewType.Settings ||
+        (state.activeView === ViewType.TaskList && state.focusedPanel === 'list'))
+    ) {
       exit();
       return;
     }
@@ -1217,182 +1244,202 @@ export function App({ container, initialProject, latestVersion }: Props) {
       {/* Header: app info + key hints + logo */}
       <Header state={state} latestVersion={latestVersion} />
 
-      {/* Content area */}
-      <Box flexDirection="column" flexGrow={1} overflowY="hidden">
-        {state.confirmDelete && <ConfirmDialog task={state.confirmDelete} />}
+      {/* Tab bar: Tasks / Settings */}
+      <TabBar activeTab={state.activeTab} />
 
-        {!state.confirmDelete &&
-          state.changelogEntries &&
-          state.changelogDialogOpen &&
-          state.activeView === ViewType.TaskList && (
-            <ChangelogBanner entries={state.changelogEntries} currentIndex={state.changelogIndex} />
-          )}
+      {/* Settings tab */}
+      {state.activeTab === TopTab.Settings && <SettingsView />}
 
-        {/* Task list: always visible (ticker is non-blocking in the header) */}
-        {!state.confirmDelete &&
-          !state.changelogDialogOpen &&
-          state.activeView === ViewType.TaskList &&
-          (state.detectedGitRemote ? (
-            <DetectedProjectDialog remote={state.detectedGitRemote} />
-          ) : (
-            <Box flexDirection="row" flexGrow={1}>
-              <EpicPanel
-                epics={state.epics}
-                selectedIndex={state.epicSelectedIndex}
-                selectedEpicIds={state.selectedEpicIds}
-                isFocused={state.focusedPanel === 'epic'}
-                isReordering={state.isEpicReordering}
+      {/* Content area (Tasks tab) */}
+      {state.activeTab === TopTab.Tasks && (
+        <Box flexDirection="column" flexGrow={1} overflowY="hidden">
+          {state.confirmDelete && <ConfirmDialog task={state.confirmDelete} />}
+
+          {!state.confirmDelete &&
+            state.changelogEntries &&
+            state.changelogDialogOpen &&
+            state.activeView === ViewType.TaskList && (
+              <ChangelogBanner
+                entries={state.changelogEntries}
+                currentIndex={state.changelogIndex}
               />
-              <Box width={taskListWidth}>
-                <TaskList
-                  tasks={state.tasks}
-                  selectedIndex={state.selectedIndex}
-                  searchQuery={state.searchQuery}
-                  isSearchActive={state.isSearchActive}
-                  isReordering={state.isReordering}
-                  filter={state.filter}
-                  activeProjectName={state.activeProject?.name ?? 'none'}
-                  nonTerminalBlockerIds={
-                    new Set(
-                      state.depBlockers.filter((t) => !isTerminalStatus(t.status)).map((t) => t.id),
-                    )
-                  }
-                  nonTerminalDependentIds={
-                    new Set(
-                      state.depDependents
-                        .filter((t) => !isTerminalStatus(t.status))
-                        .map((t) => t.id),
-                    )
-                  }
-                  isSelectedBlocked={state.depBlockers.some((t) => !isTerminalStatus(t.status))}
-                  isFocused={state.focusedPanel === 'list'}
-                  epicFilterActive={state.selectedEpicIds.size > 0}
+            )}
+
+          {/* Task list: always visible (ticker is non-blocking in the header) */}
+          {!state.confirmDelete &&
+            !state.changelogDialogOpen &&
+            state.activeView === ViewType.TaskList &&
+            (state.detectedGitRemote ? (
+              <DetectedProjectDialog remote={state.detectedGitRemote} />
+            ) : (
+              <Box flexDirection="row" flexGrow={1}>
+                <EpicPanel
+                  epics={state.epics}
+                  selectedIndex={state.epicSelectedIndex}
+                  selectedEpicIds={state.selectedEpicIds}
+                  isFocused={state.focusedPanel === 'epic'}
+                  isReordering={state.isEpicReordering}
                 />
-              </Box>
-              <Box width={taskDetailWidth}>
-                {previewTask ? (
-                  <TaskDetail
-                    task={previewTask}
-                    blockers={state.depBlockers}
-                    dependents={state.depDependents}
-                    related={state.depRelated}
-                    duplicates={state.depDuplicates}
-                    isFocused={state.focusedPanel === 'detail'}
-                    scrollOffset={state.detailScrollOffset}
+                <Box width={taskListWidth}>
+                  <TaskList
+                    tasks={state.tasks}
+                    selectedIndex={state.selectedIndex}
+                    searchQuery={state.searchQuery}
+                    isSearchActive={state.isSearchActive}
+                    isReordering={state.isReordering}
+                    filter={state.filter}
+                    activeProjectName={state.activeProject?.name ?? 'none'}
+                    nonTerminalBlockerIds={
+                      new Set(
+                        state.depBlockers
+                          .filter((t) => !isTerminalStatus(t.status))
+                          .map((t) => t.id),
+                      )
+                    }
+                    nonTerminalDependentIds={
+                      new Set(
+                        state.depDependents
+                          .filter((t) => !isTerminalStatus(t.status))
+                          .map((t) => t.id),
+                      )
+                    }
+                    isSelectedBlocked={state.depBlockers.some((t) => !isTerminalStatus(t.status))}
+                    isFocused={state.focusedPanel === 'list'}
+                    epicFilterActive={state.selectedEpicIds.size > 0}
                   />
-                ) : (
-                  <Box
-                    flexDirection="column"
-                    flexGrow={1}
-                    borderStyle="bold"
-                    borderColor={theme.border}
-                  >
-                    <Box>
-                      <Text color={theme.title} bold>
-                        {' '}
-                        detail
-                      </Text>
+                </Box>
+                <Box width={taskDetailWidth}>
+                  {previewTask ? (
+                    <TaskDetail
+                      task={previewTask}
+                      blockers={state.depBlockers}
+                      dependents={state.depDependents}
+                      related={state.depRelated}
+                      duplicates={state.depDuplicates}
+                      isFocused={state.focusedPanel === 'detail'}
+                      scrollOffset={state.detailScrollOffset}
+                    />
+                  ) : (
+                    <Box
+                      flexDirection="column"
+                      flexGrow={1}
+                      borderStyle="bold"
+                      borderColor={theme.border}
+                    >
+                      <Box>
+                        <Text color={theme.title} bold>
+                          {' '}
+                          detail
+                        </Text>
+                      </Box>
+                      <Box flexGrow={1} justifyContent="center" alignItems="center">
+                        <Text dimColor>No task selected</Text>
+                      </Box>
                     </Box>
-                    <Box flexGrow={1} justifyContent="center" alignItems="center">
-                      <Text dimColor>No task selected</Text>
-                    </Box>
-                  </Box>
-                )}
+                  )}
+                </Box>
               </Box>
-            </Box>
-          ))}
+            ))}
 
-        {!state.confirmDelete && state.activeView === ViewType.TaskDetail && state.selectedTask && (
-          <TaskDetail
-            task={state.selectedTask}
-            blockers={state.depBlockers}
-            dependents={state.depDependents}
-            related={state.depRelated}
-            duplicates={state.depDuplicates}
-            scrollOffset={state.detailScrollOffset}
-          />
-        )}
+          {!state.confirmDelete &&
+            state.activeView === ViewType.TaskDetail &&
+            state.selectedTask && (
+              <TaskDetail
+                task={state.selectedTask}
+                blockers={state.depBlockers}
+                dependents={state.depDependents}
+                related={state.depRelated}
+                duplicates={state.depDuplicates}
+                scrollOffset={state.detailScrollOffset}
+              />
+            )}
 
-        {!state.confirmDelete &&
-          state.activeView === ViewType.DependencyList &&
-          state.selectedTask && (
-            <DependencyList
-              task={state.selectedTask}
-              blockers={state.depBlockers}
-              dependents={state.depDependents}
-              related={state.depRelated}
-              duplicates={state.depDuplicates}
-              selectedIndex={state.depSelectedIndex}
-              isAddingDep={state.isAddingDep}
-              addDepInput={state.addDepInput}
+          {!state.confirmDelete &&
+            state.activeView === ViewType.DependencyList &&
+            state.selectedTask && (
+              <DependencyList
+                task={state.selectedTask}
+                blockers={state.depBlockers}
+                dependents={state.depDependents}
+                related={state.depRelated}
+                duplicates={state.depDuplicates}
+                selectedIndex={state.depSelectedIndex}
+                isAddingDep={state.isAddingDep}
+                addDepInput={state.addDepInput}
+              />
+            )}
+
+          {!state.confirmDelete &&
+            (state.activeView === ViewType.TaskCreate ||
+              state.activeView === ViewType.TaskEdit) && (
+              <TaskForm
+                editingTask={state.activeView === ViewType.TaskEdit ? state.selectedTask : null}
+                allTasks={allProjectTasks}
+                initialDeps={
+                  state.activeView === ViewType.TaskEdit ? initialDepsForEdit : undefined
+                }
+                onSave={handleFormSave}
+                onCancel={handleFormCancel}
+              />
+            )}
+
+          {!state.confirmDelete &&
+            state.activeView === ViewType.EpicPicker &&
+            state.selectedTask && (
+              <EpicPicker
+                epics={state.epics}
+                currentEpicId={state.selectedTask.parentId}
+                onSelect={handleEpicPickerSelect}
+                onCancel={handleEpicPickerCancel}
+              />
+            )}
+
+          {!state.confirmDelete && state.activeView === ViewType.ProjectSelector && (
+            <ProjectSelector
+              projects={state.projects}
+              activeProject={state.activeProject}
+              onSelect={handleProjectSelect}
+              onCreate={handleProjectCreate}
+              onEdit={handleProjectEdit}
+              onSetDefault={handleSetDefault}
+              onLink={handleProjectLink}
+              onCancel={handleProjectCancel}
             />
           )}
 
-        {!state.confirmDelete &&
-          (state.activeView === ViewType.TaskCreate || state.activeView === ViewType.TaskEdit) && (
-            <TaskForm
-              editingTask={state.activeView === ViewType.TaskEdit ? state.selectedTask : null}
-              allTasks={allProjectTasks}
-              initialDeps={state.activeView === ViewType.TaskEdit ? initialDepsForEdit : undefined}
-              onSave={handleFormSave}
-              onCancel={handleFormCancel}
-            />
-          )}
-
-        {!state.confirmDelete && state.activeView === ViewType.EpicPicker && state.selectedTask && (
-          <EpicPicker
-            epics={state.epics}
-            currentEpicId={state.selectedTask.parentId}
-            onSelect={handleEpicPickerSelect}
-            onCancel={handleEpicPickerCancel}
-          />
-        )}
-
-        {!state.confirmDelete && state.activeView === ViewType.ProjectSelector && (
-          <ProjectSelector
-            projects={state.projects}
-            activeProject={state.activeProject}
-            onSelect={handleProjectSelect}
-            onCreate={handleProjectCreate}
-            onEdit={handleProjectEdit}
-            onSetDefault={handleSetDefault}
-            onLink={handleProjectLink}
-            onCancel={handleProjectCancel}
-          />
-        )}
-
-        {!state.confirmDelete && state.activeView === ViewType.ProjectCreate && (
-          <ProjectForm
-            initialGitRemote={state.detectedGitRemote ?? undefined}
-            onSave={handleProjectFormSave}
-            onCancel={handleProjectFormCancel}
-          />
-        )}
-
-        {!state.confirmDelete &&
-          state.activeView === ViewType.ProjectEdit &&
-          state.editingProject && (
+          {!state.confirmDelete && state.activeView === ViewType.ProjectCreate && (
             <ProjectForm
-              editingProject={state.editingProject}
+              initialGitRemote={state.detectedGitRemote ?? undefined}
               onSave={handleProjectFormSave}
               onCancel={handleProjectFormCancel}
             />
           )}
 
-        {!state.confirmDelete &&
-          state.activeView === ViewType.ProjectLink &&
-          state.linkingProject && (
-            <ProjectLinkForm
-              project={state.linkingProject}
-              onSave={handleLinkSave}
-              onUnlink={handleLinkUnlink}
-              onDetect={handleLinkDetect}
-              onCancel={handleLinkCancel}
-            />
-          )}
+          {!state.confirmDelete &&
+            state.activeView === ViewType.ProjectEdit &&
+            state.editingProject && (
+              <ProjectForm
+                editingProject={state.editingProject}
+                onSave={handleProjectFormSave}
+                onCancel={handleProjectFormCancel}
+              />
+            )}
 
-        {!state.confirmDelete && state.activeView === ViewType.Help && <HelpOverlay />}
-      </Box>
+          {!state.confirmDelete &&
+            state.activeView === ViewType.ProjectLink &&
+            state.linkingProject && (
+              <ProjectLinkForm
+                project={state.linkingProject}
+                onSave={handleLinkSave}
+                onUnlink={handleLinkUnlink}
+                onDetect={handleLinkDetect}
+                onCancel={handleLinkCancel}
+              />
+            )}
+
+          {!state.confirmDelete && state.activeView === ViewType.Help && <HelpOverlay />}
+        </Box>
+      )}
 
       {/* Breadcrumbs */}
       <Crumbs breadcrumbs={state.breadcrumbs} />

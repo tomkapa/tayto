@@ -1,10 +1,11 @@
-import { ViewType } from './types.js';
+import { ViewType, TopTab } from './types.js';
 import type { AppState, Action } from './types.js';
 import { PAGE_SIZE } from './constants.js';
 
 export const initialState: AppState = {
   activeView: ViewType.TaskList,
   breadcrumbs: [ViewType.TaskList],
+  activeTab: TopTab.Tasks,
   tasks: [],
   selectedIndex: 0,
   selectedTask: null,
@@ -335,5 +336,16 @@ export function appReducer(state: AppState, action: Action): AppState {
 
     case 'CLOSE_CHANGELOG_DIALOG':
       return { ...state, changelogDialogOpen: false };
+
+    case 'SWITCH_TAB': {
+      const isSettings = action.tab === TopTab.Settings;
+      return {
+        ...state,
+        activeTab: action.tab,
+        activeView: isSettings ? ViewType.Settings : ViewType.TaskList,
+        breadcrumbs: isSettings ? [ViewType.Settings] : [ViewType.TaskList],
+        focusedPanel: 'list',
+      };
+    }
   }
 }

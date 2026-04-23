@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { appReducer, initialState } from '../../src/tui/state.js';
-import { ViewType } from '../../src/tui/types.js';
+import { ViewType, TopTab } from '../../src/tui/types.js';
 import type { Task } from '../../src/types/task.js';
 import type { Project } from '../../src/types/project.js';
 
@@ -829,6 +829,42 @@ describe('appReducer', () => {
       state = appReducer(state, { type: 'CLOSE_CHANGELOG_DIALOG' });
       expect(state.changelogDialogOpen).toBe(false);
       expect(state.changelogEntries).toEqual(mockEntries);
+    });
+  });
+
+  describe('SWITCH_TAB', () => {
+    it('initialState has activeTab Tasks', () => {
+      expect(initialState.activeTab).toBe(TopTab.Tasks);
+    });
+
+    it('SWITCH_TAB to Settings sets activeView to Settings and resets breadcrumbs', () => {
+      const state = appReducer(initialState, { type: 'SWITCH_TAB', tab: TopTab.Settings });
+      expect(state.activeTab).toBe(TopTab.Settings);
+      expect(state.activeView).toBe(ViewType.Settings);
+      expect(state.breadcrumbs).toEqual([ViewType.Settings]);
+    });
+
+    it('SWITCH_TAB to Tasks resets to TaskList and breadcrumbs', () => {
+      const inSettings = appReducer(initialState, { type: 'SWITCH_TAB', tab: TopTab.Settings });
+      const back = appReducer(inSettings, { type: 'SWITCH_TAB', tab: TopTab.Tasks });
+      expect(back.activeTab).toBe(TopTab.Tasks);
+      expect(back.activeView).toBe(ViewType.TaskList);
+      expect(back.breadcrumbs).toEqual([ViewType.TaskList]);
+    });
+
+    it('SWITCH_TAB resets focusedPanel to list', () => {
+      const withEpicFocus = { ...initialState, focusedPanel: 'epic' as const };
+      const state = appReducer(withEpicFocus, { type: 'SWITCH_TAB', tab: TopTab.Settings });
+      expect(state.focusedPanel).toBe('list');
+    });
+
+    it('SWITCH_TAB discards deep navigation breadcrumbs', () => {
+      let state = appReducer(initialState, { type: 'NAVIGATE_TO', view: ViewType.TaskDetail });
+      state = appReducer(state, { type: 'NAVIGATE_TO', view: ViewType.TaskEdit });
+      expect(state.breadcrumbs).toHaveLength(3);
+
+      const switched = appReducer(state, { type: 'SWITCH_TAB', tab: TopTab.Settings });
+      expect(switched.breadcrumbs).toEqual([ViewType.Settings]);
     });
   });
 });

@@ -16,8 +16,12 @@ export const ViewType = {
   EpicPicker: 'epic-picker',
   ProjectLink: 'project-link',
   Help: 'help',
+  Settings: 'settings',
 } as const;
 export type ViewType = (typeof ViewType)[keyof typeof ViewType];
+
+export const TopTab = { Tasks: 'tasks', Settings: 'settings' } as const;
+export type TopTab = (typeof TopTab)[keyof typeof TopTab];
 
 export type FlashLevel = 'info' | 'warn' | 'error';
 
@@ -26,6 +30,7 @@ export type PanelFocus = 'epic' | 'list' | 'detail';
 export interface AppState {
   activeView: ViewType;
   breadcrumbs: ViewType[];
+  activeTab: TopTab;
   tasks: Task[];
   selectedIndex: number;
   selectedTask: Task | null;
@@ -131,4 +136,5 @@ export type Action =
   | { type: 'CHANGELOG_NAVIGATE'; direction: 'up' | 'down' }
   | { type: 'DISMISS_CHANGELOG' }
   | { type: 'OPEN_CHANGELOG_DIALOG' }
-  | { type: 'CLOSE_CHANGELOG_DIALOG' };
+  | { type: 'CLOSE_CHANGELOG_DIALOG' }
+  | { type: 'SWITCH_TAB'; tab: TopTab };

@@ -72,6 +72,14 @@ function getKeyHints(state: AppState): KeyHint[] {
     ];
   }
 
+  if (activeView === ViewType.Settings) {
+    return [
+      { key: '1', desc: 'tasks' },
+      { key: '?', desc: 'help' },
+      { key: 'q', desc: 'quit' },
+    ];
+  }
+
   if (activeView === ViewType.TaskList) {
     return [
       { key: 'enter', desc: 'view' },
@@ -86,6 +94,7 @@ function getKeyHints(state: AppState): KeyHint[] {
       { key: 'f/t', desc: 'filter' },
       { key: 'PgDn/Up', desc: 'page' },
       { key: 'tab/S-tab', desc: 'panel' },
+      { key: '2', desc: 'settings' },
       { key: '?', desc: 'help' },
       { key: 'q', desc: 'quit' },
     ];
