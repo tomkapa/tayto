@@ -1169,6 +1169,21 @@ describe('TaskService', () => {
       expect(result.error.message).toContain('cannot have a parent');
     });
 
+    it('detaches parent when parentId is set to null', () => {
+      const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' }, project);
+      const story = container.taskService.createTask(
+        { name: 'Story', parentId: epic.value.id },
+        project,
+      );
+      if (!epic.ok || !story.ok) throw new Error('setup failed');
+      expect(story.value.parentId).toBe(epic.value.id);
+
+      const result = container.taskService.updateTask(story.value.id, { parentId: null });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.parentId).toBeNull();
+    });
+
     describe('auto-propagate parent status', () => {
       it('moves epic to in-progress when first child starts', () => {
         const epic = container.taskService.createTask({ name: 'Epic', type: 'epic' }, project);

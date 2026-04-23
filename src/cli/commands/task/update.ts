@@ -11,6 +11,7 @@ export function registerTaskUpdate(parent: Command, container: Container): void 
     .option('-t, --type <type>', 'Task type: epic, story, tech-debt, bug')
     .option('-s, --status <status>', 'Task status')
     .option('--parent <parentId>', 'Parent task id')
+    .option('--detach-parent', 'Remove the parent from this task')
     .option('--technical-notes <notes>', 'Replace technical notes')
     .option('--additional-requirements <requirements>', 'Replace additional requirements')
     .option('--append-notes <notes>', 'Append to technical notes')
@@ -24,18 +25,23 @@ export function registerTaskUpdate(parent: Command, container: Container): void 
           type?: string;
           status?: string;
           parent?: string;
+          detachParent?: boolean;
           technicalNotes?: string;
           additionalRequirements?: string;
           appendNotes?: string;
           appendRequirements?: string;
         },
       ) => {
+        if (opts.detachParent && opts.parent) {
+          console.error('Cannot use --detach-parent and --parent together');
+          process.exit(1);
+        }
         const result = container.taskService.updateTask(id, {
           name: opts.name,
           description: opts.description,
           type: opts.type,
           status: opts.status,
-          parentId: opts.parent,
+          parentId: opts.detachParent ? null : opts.parent,
           technicalNotes: opts.technicalNotes,
           additionalRequirements: opts.additionalRequirements,
           appendNotes: opts.appendNotes,
