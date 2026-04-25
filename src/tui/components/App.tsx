@@ -1240,11 +1240,15 @@ export function App({ container, initialProject, latestVersion }: Props) {
 
   return (
     <Box flexDirection="column" height={stdout.rows}>
-      {/* Header: app info + key hints + logo */}
-      <Header state={state} latestVersion={latestVersion} />
-
-      {/* Tab bar: Tasks / Settings */}
-      <TabBar activeTab={state.activeTab} />
+      {/* Header and tab bar must keep their natural height. Without
+          flexShrink=0, Yoga shrinks them when sibling content (e.g. a tall
+          TaskDetail panel) reports a natural height that pushes the column
+          past stdout.rows, making header rows disappear and reappear as the
+          detail view scrolls. */}
+      <Box flexShrink={0} flexDirection="column">
+        <Header state={state} latestVersion={latestVersion} />
+        <TabBar activeTab={state.activeTab} />
+      </Box>
 
       {/* Settings tab */}
       {state.activeTab === TopTab.Settings && <SettingsView />}

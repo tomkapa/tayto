@@ -48,6 +48,7 @@ function buildContentLines(
 
   // Metadata
   lines.push(field('id', task.id));
+  lines.push(field('name', task.name));
   lines.push(field('type', task.type));
   lines.push(field('status', task.status));
   lines.push(field('created', new Date(task.createdAt).toLocaleString()));
@@ -143,27 +144,25 @@ export function TaskDetail({
       borderStyle="bold"
       borderColor={isFocused ? theme.borderFocus : theme.border}
     >
-      {/* Title bar */}
-      <Box gap={0}>
+      {/* Title bar - fixed height, never shrinks */}
+      <Box gap={0} flexShrink={0}>
         <Text color={theme.title} bold>
           {' '}
           detail
         </Text>
-        <Text color={theme.fg}>(</Text>
-        <Text color={theme.titleHighlight} bold>
-          {task.name}
-        </Text>
-        <Text color={theme.fg}>)</Text>
         {scrollOffset > 0 && <Text dimColor> ↑{scrollOffset}</Text>}
       </Box>
 
-      {/* Scrollable content - pre-rendered text lines */}
-      <Text>{visibleLines.join('\n')}</Text>
+      {/* Scrollable content - fills remaining space, clips wrapped overflow.
+          Without overflow=hidden, long lines that wrap into multiple visual
+          rows expand the parent box past the viewport, hiding the title and
+          bottom border behind the next render. */}
+      <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
+        <Text>{visibleLines.join('\n')}</Text>
+      </Box>
 
-      <Box flexGrow={1} />
-
-      {/* Mermaid diagram hint */}
-      <Box paddingX={1}>
+      {/* Mermaid diagram hint - fixed height, never shrinks */}
+      <Box paddingX={1} flexShrink={0}>
         <MermaidHint content={allText} />
       </Box>
     </Box>

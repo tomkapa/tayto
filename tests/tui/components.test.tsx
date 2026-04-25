@@ -313,6 +313,23 @@ describe('TUI Component Rendering', () => {
       const { lastFrame: withDeps } = render(<TaskDetail task={mockTask} related={[related]} />);
       expect(withDeps()).toContain('--- dependencies ---');
     });
+
+    it('renders task name as a field, not in the title bar', () => {
+      // Regression: long task names previously rendered inside `detail(<name>)`
+      // and wrapped onto two visual lines, overlapping the `id` row.
+      // The title bar must contain only the static `detail` header; the
+      // task name belongs to a `name:` field row alongside id/type/status.
+      const longName = 'A very long task name that would wrap and overlap the id row in the panel';
+      const longTask: Task = { ...mockTask, name: longName };
+      const { lastFrame } = render(<TaskDetail task={longTask} />);
+      const frame = lastFrame() ?? '';
+
+      expect(frame).toContain('detail');
+      expect(frame).toContain(longName);
+      expect(frame).not.toContain(`detail(${longName})`);
+      expect(frame).not.toMatch(/detail\s*\(/);
+      expect(frame).toMatch(/name\s*:\s*A very long task name/);
+    });
   });
 
   describe('TaskForm', () => {
