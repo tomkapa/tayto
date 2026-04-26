@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-04-26
+
+### Added
+- Analytic commands for agent productivity reporting (`tayto analytics`)
+- Settings tab with tab bar navigation infrastructure
+- Show hovered release in detail panel when release panel is focused
+- Enter key on release panel opens full task detail view for that release
+
+### Changed
+- Renamed "epic" to "release" throughout codebase and UI
+- Repository boundary with branded IDs and per-module error unions
+
+### Fixed
+- Show release name instead of raw task ID in detail panel parent field
+- Highlight task name in detail panel with accent color across all wrapped lines
+- Prevent task detail overflow from clobbering header and overlapping rows
+- Align task table columns and truncate long names to prevent flickering
+- Add `--detach-parent` flag to `task update` CLI command
+
 ## [0.8.1] - 2026-04-14
 
 ### Changed
